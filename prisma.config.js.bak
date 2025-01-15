@@ -1,0 +1,10 @@
+const path = require('path')
+
+/** @type {import('prisma').PrismaConfig} */
+module.exports = {
+  earlyAccess: true,
+  schema: {
+    kind: 'single',
+    filePath: path.join(process.cwd(), 'prisma', 'schema.prisma'),
+  },
+}
