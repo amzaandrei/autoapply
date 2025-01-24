@@ -148,7 +148,7 @@ export default function DiscoverPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 py-12">
-        <StepIndicator current={2} campaignId={campaignId ?? undefined} />
+        <StepIndicator currentStep={1} campaignId={campaignId ?? undefined} />
 
         {/* Step 1: Create campaign */}
         {!campaignId ? (
