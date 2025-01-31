@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { toast } from 'sonner'
 import { Sparkles, Loader2, CheckCircle, XCircle, ArrowRight, Building2 } from 'lucide-react'
+import { StepIndicator } from '@/components/StepIndicator'
 
 interface GenerateResult {
   companyId: string
@@ -83,18 +84,7 @@ function GeneratePage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-4 py-12">
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 mb-8 text-sm text-muted-foreground">
-          <span className="line-through">1 Upload CV</span>
-          <ArrowRight className="h-4 w-4" />
-          <span className="line-through">2 Discover</span>
-          <ArrowRight className="h-4 w-4" />
-          <span className="font-semibold text-primary">3 Generate</span>
-          <ArrowRight className="h-4 w-4" />
-          <span>4 Review</span>
-          <ArrowRight className="h-4 w-4" />
-          <span>5 Send</span>
-        </div>
+        <StepIndicator currentStep={2} campaignId={campaignId} />
 
         <Card>
           <CardHeader>
@@ -199,6 +189,13 @@ function GeneratePage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Back navigation */}
+        <div className="mt-6 flex">
+          <Button variant="ghost" onClick={() => router.push('/upload')}>
+            ← Back
+          </Button>
+        </div>
       </div>
     </div>
   )

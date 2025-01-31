@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { Upload, FileText, Loader2, CheckCircle, ArrowRight } from 'lucide-react'
+import { StepIndicator } from '@/components/StepIndicator'
 
 export default function UploadPage() {
   const router = useRouter()
@@ -97,18 +98,7 @@ export default function UploadPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-4 py-12">
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 mb-8 text-sm text-muted-foreground">
-          <span className="font-semibold text-primary">1 Upload CV</span>
-          <ArrowRight className="h-4 w-4" />
-          <span>2 Discover</span>
-          <ArrowRight className="h-4 w-4" />
-          <span>3 Generate</span>
-          <ArrowRight className="h-4 w-4" />
-          <span>4 Review</span>
-          <ArrowRight className="h-4 w-4" />
-          <span>5 Send</span>
-        </div>
+        <StepIndicator currentStep={1} />
 
         <Card>
           <CardHeader>

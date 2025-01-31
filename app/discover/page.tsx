@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
+import { StepIndicator } from '@/components/StepIndicator'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -147,18 +148,7 @@ export default function DiscoverPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 py-12">
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 mb-8 text-sm text-muted-foreground">
-          <span className="line-through">1 Upload CV</span>
-          <ArrowRight className="h-4 w-4" />
-          <span className="font-semibold text-primary">2 Discover</span>
-          <ArrowRight className="h-4 w-4" />
-          <span>3 Generate</span>
-          <ArrowRight className="h-4 w-4" />
-          <span>4 Review</span>
-          <ArrowRight className="h-4 w-4" />
-          <span>5 Send</span>
-        </div>
+        <StepIndicator currentStep={1} campaignId={campaignId ?? undefined} />
 
         {/* Step 1: Create campaign */}
         {!campaignId ? (
@@ -420,6 +410,13 @@ export default function DiscoverPage() {
             </Card>
           </div>
         )}
+
+        {/* Back navigation */}
+        <div className="mt-8 flex">
+          <Button variant="ghost" onClick={() => router.push('/upload')}>
+            ← Back
+          </Button>
+        </div>
       </div>
     </div>
   )
