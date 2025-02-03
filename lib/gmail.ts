@@ -9,11 +9,12 @@ export function getOAuth2Client(): OAuth2Client {
   )
 }
 
-export function getGmailAuthUrl(oauth2Client: OAuth2Client): string {
+export function getGmailAuthUrl(oauth2Client: OAuth2Client, campaignId?: string): string {
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: ['https://www.googleapis.com/auth/gmail.send'],
     prompt: 'consent',
+    ...(campaignId ? { state: campaignId } : {}),
   })
 }
 
