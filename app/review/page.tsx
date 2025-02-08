@@ -21,6 +21,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
+import Link from 'next/link'
 
 function ReviewPage() {
   const router = useRouter()
@@ -85,7 +86,8 @@ function ReviewPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-3xl mx-auto px-4 py-12">
+      <div className="max-w-4xl mx-auto px-4 py-12">
+        <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">← Dashboard</Link>
         <StepIndicator currentStep={3} campaignId={campaignId} />
 
         {/* Header */}
