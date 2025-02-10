@@ -30,6 +30,7 @@ import {
   SkipForward,
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
+import Link from 'next/link'
 
 interface SendResult {
   emailId: string
@@ -126,7 +127,8 @@ function SendPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-3xl mx-auto px-4 py-12">
+      <div className="max-w-4xl mx-auto px-4 py-12">
+        <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">← Dashboard</Link>
         <StepIndicator currentStep={4} campaignId={campaignId} />
 
         <div className="space-y-6">
@@ -271,6 +273,11 @@ function SendPage() {
                       </Badge>
                     </div>
                   ))}
+                </div>
+                <div className="mt-6">
+                  <Button asChild size="lg" className="w-full sm:w-auto">
+                    <Link href="/dashboard">← Back to Dashboard</Link>
+                  </Button>
                 </div>
               </CardContent>
             </Card>
