@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   Upload,
   Building2,
@@ -16,6 +15,7 @@ import {
   MailCheck,
   FileText,
 } from 'lucide-react'
+import CampaignList from '@/components/CampaignList'
 
 export default async function DashboardPage() {
   const session = await auth()
@@ -40,14 +40,6 @@ export default async function DashboardPage() {
     { step: '4', label: 'Review', href: '/review', desc: 'Edit & approve', icon: CheckSquare, done: false },
     { step: '5', label: 'Send', href: '/send', desc: 'Send via Gmail', icon: Send, done: totalSent > 0 },
   ]
-
-  const statusColors: Record<string, string> = {
-    DRAFT: 'secondary',
-    ACTIVE: 'default',
-    PAUSED: 'secondary',
-    COMPLETED: 'secondary',
-    ARCHIVED: 'outline',
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -136,51 +128,7 @@ export default async function DashboardPage() {
 
         {/* Recent campaigns */}
         {campaigns.length > 0 ? (
-          <div>
-            <h2 className="text-lg font-semibold mb-4">Recent Campaigns</h2>
-            <div className="space-y-3">
-              {campaigns.map((campaign) => (
-                <Card key={campaign.id}>
-                  <CardContent className="py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <p className="font-medium">{campaign.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {campaign._count.companies} companies · {campaign._count.emails} emails
-                            {campaign.sentCount > 0 && ` · ${campaign.sentCount} sent`}
-                          </p>
-                        </div>
-                        <Badge variant={statusColors[campaign.status] as 'default' | 'secondary' | 'outline' | 'destructive'}>
-                          {campaign.status.toLowerCase()}
-                        </Badge>
-                      </div>
-                      <div className="flex gap-2">
-                        {campaign._count.emails === 0 ? (
-                          <Link href={`/generate?campaignId=${campaign.id}`}>
-                            <Button size="sm" variant="outline">
-                              Generate <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                            </Button>
-                          </Link>
-                        ) : (
-                          <Link href={`/review?campaignId=${campaign.id}`}>
-                            <Button size="sm" variant="outline">
-                              Review <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                            </Button>
-                          </Link>
-                        )}
-                        <Link href={`/send?campaignId=${campaign.id}`}>
-                          <Button size="sm">
-                            Send <Send className="h-3.5 w-3.5 ml-1" />
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
+          <CampaignList campaigns={campaigns} />
         ) : (
           <Card>
             <CardContent className="py-16 text-center">
