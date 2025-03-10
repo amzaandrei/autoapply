@@ -1,0 +1,298 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
+
+interface ProfileData {
+  id: string
+  name: string | null
+  email: string
+  image: string | null
+  createdAt: string
+  profile: {
+    id: string
+    cvUrl: string | null
+    cvText: string | null
+    jobTitle: string | null
+    skills: string[]
+    bio: string | null
+    linkedIn: string | null
+    portfolio: string | null
+    updatedAt: string
+  } | null
+}
+
+export default function ProfilePage() {
+  const [data, setData] = useState<ProfileData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  // Editable form state
+  const [name, setName] = useState('')
+  const [image, setImage] = useState('')
+  const [jobTitle, setJobTitle] = useState('')
+  const [bio, setBio] = useState('')
+  const [linkedIn, setLinkedIn] = useState('')
+  const [portfolio, setPortfolio] = useState('')
+  const [skillsInput, setSkillsInput] = useState('')
+
+  useEffect(() => {
+    fetch('/api/profile')
+      .then((r) => r.json())
+      .then((d: ProfileData) => {
+        setData(d)
+        setName(d.name ?? '')
+        setImage(d.image ?? '')
+        setJobTitle(d.profile?.jobTitle ?? '')
+        setBio(d.profile?.bio ?? '')
+        setLinkedIn(d.profile?.linkedIn ?? '')
+        setPortfolio(d.profile?.portfolio ?? '')
+        setSkillsInput((d.profile?.skills ?? []).join(', '))
+      })
+      .catch(() => toast.error('Failed to load profile'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const skills = skillsInput
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, image, jobTitle, bio, linkedIn, portfolio, skills }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? 'Save failed')
+      }
+
+      const updated: ProfileData = await res.json()
+      setData(updated)
+      setSkillsInput((updated.profile?.skills ?? []).join(', '))
+      toast.success('Profile saved!')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save profile')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="max-w-3xl mx-auto px-4 py-10">
+        <div className="text-muted-foreground text-sm">Loading profile…</div>
+      </main>
+    )
+  }
+
+  if (!data) {
+    return (
+      <main className="max-w-3xl mx-auto px-4 py-10">
+        <div className="text-destructive text-sm">Could not load profile.</div>
+      </main>
+    )
+  }
+
+  const cvFilename = data.profile?.cvUrl?.split('/').pop() ?? null
+
+  return (
+    <main className="max-w-3xl mx-auto px-4 py-10 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Your Profile</h1>
+        <p className="text-muted-foreground text-sm mt-1">
+          Keep your info up to date so AutoApply can craft the best emails for you.
+        </p>
+      </div>
+
+      {/* Personal Info */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Personal Info</CardTitle>
+          <CardDescription>Your name and avatar shown across AutoApply.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Read-only email */}
+          <div className="space-y-1">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" value={data.email} readOnly className="bg-muted cursor-not-allowed" />
+            <p className="text-xs text-muted-foreground">Email cannot be changed here.</p>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="name">Display Name</Label>
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your full name"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="image">Profile Image URL</Label>
+            <div className="flex items-center gap-3">
+              {image && (
+                <img
+                  src={image}
+                  alt="Profile"
+                  className="w-10 h-10 rounded-full object-cover shrink-0 border"
+                />
+              )}
+              <Input
+                id="image"
+                value={image}
+                onChange={(e) => setImage(e.target.value)}
+                placeholder="https://…"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="bio">Bio / Summary</Label>
+            <Textarea
+              id="bio"
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              rows={3}
+              placeholder="A short professional summary…"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* CV / Resume */}
+      <Card>
+        <CardHeader>
+          <CardTitle>CV / Resume</CardTitle>
+          <CardDescription>
+            Your uploaded CV content used when generating application emails.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {cvFilename && (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">📄 {cvFilename}</Badge>
+            </div>
+          )}
+          {data.profile?.cvText ? (
+            <div className="space-y-1">
+              <Label>Extracted CV Text</Label>
+              <Textarea
+                value={data.profile.cvText}
+                readOnly
+                rows={10}
+                className="bg-muted cursor-not-allowed font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                To update your CV, go to the{' '}
+                <a href="/upload" className="underline hover:text-foreground">
+                  Upload page
+                </a>
+                .
+              </p>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              No CV uploaded yet.{' '}
+              <a href="/upload" className="underline hover:text-foreground">
+                Upload your CV
+              </a>{' '}
+              to get started.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Job Preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Job Preferences</CardTitle>
+          <CardDescription>
+            Tell AutoApply what you&apos;re looking for so it can target the right opportunities.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1">
+            <Label htmlFor="jobTitle">Target Job Title</Label>
+            <Input
+              id="jobTitle"
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+              placeholder="e.g. Senior Product Designer"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="skills">Skills</Label>
+            <Input
+              id="skills"
+              value={skillsInput}
+              onChange={(e) => setSkillsInput(e.target.value)}
+              placeholder="React, TypeScript, Figma, …"
+            />
+            <p className="text-xs text-muted-foreground">Comma-separated list of your skills.</p>
+            {skillsInput && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {skillsInput
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+                  .map((s) => (
+                    <Badge key={s} variant="outline" className="text-xs">
+                      {s}
+                    </Badge>
+                  ))}
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          <div className="space-y-1">
+            <Label htmlFor="linkedIn">LinkedIn URL</Label>
+            <Input
+              id="linkedIn"
+              value={linkedIn}
+              onChange={(e) => setLinkedIn(e.target.value)}
+              placeholder="https://linkedin.com/in/…"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="portfolio">Portfolio / Website</Label>
+            <Input
+              id="portfolio"
+              value={portfolio}
+              onChange={(e) => setPortfolio(e.target.value)}
+              placeholder="https://yoursite.com"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Save */}
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={saving} size="lg">
+          {saving ? 'Saving…' : 'Save Profile'}
+        </Button>
+      </div>
+
+      <p className="text-xs text-muted-foreground text-right">
+        Member since {new Date(data.createdAt).toLocaleDateString()}
+      </p>
+    </main>
+  )
+}

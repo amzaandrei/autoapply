@@ -11,8 +11,10 @@ export function Navbar() {
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
         <Link href="/dashboard" className="font-semibold text-lg">AutoApply</Link>
         <div className="flex items-center gap-3">
-          {session.user.image && <img src={session.user.image} className="w-7 h-7 rounded-full" alt="" />}
-          <span className="text-sm text-muted-foreground">{session.user.name ?? session.user.email}</span>
+          <Link href="/profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            {session.user.image && <img src={session.user.image} className="w-7 h-7 rounded-full" alt="" />}
+            <span className="text-sm text-muted-foreground">{session.user.name ?? session.user.email}</span>
+          </Link>
           <Button variant="ghost" size="sm" onClick={() => signOut({ callbackUrl: '/login' })}>Sign out</Button>
         </div>
       </div>
