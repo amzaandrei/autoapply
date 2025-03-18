@@ -52,6 +52,65 @@ export interface SendEmailParams {
   subject: string
   body: string
   accessToken: string
+  cvPdfBase64?: string
+  cvFileName?: string
+}
+
+function toBase64Url(str: string): string {
+  return Buffer.from(str)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+function buildRawEmail(params: SendEmailParams): string {
+  const { to, subject, body, cvPdfBase64, cvFileName } = params
+
+  if (!cvPdfBase64) {
+    // Simple plain-text email (no attachment)
+    const messageParts = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      'Content-Type: text/html; charset=utf-8',
+      'MIME-Version: 1.0',
+      '',
+      body,
+    ]
+    return toBase64Url(messageParts.join('\r\n'))
+  }
+
+  // Multipart MIME email with PDF attachment
+  const boundary = `AutoApply_boundary_${Date.now()}`
+  const fileName = cvFileName ?? 'CV.pdf'
+
+  const bodyBase64 = Buffer.from(body).toString('base64')
+  // chunk the base64 attachment into 76-char lines (RFC 2045)
+  const pdfChunked = cvPdfBase64.match(/.{1,76}/g)?.join('\r\n') ?? cvPdfBase64
+
+  const raw = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    bodyBase64,
+    '',
+    `--${boundary}`,
+    `Content-Type: application/pdf; name="${fileName}"`,
+    'Content-Transfer-Encoding: base64',
+    `Content-Disposition: attachment; filename="${fileName}"`,
+    '',
+    pdfChunked,
+    '',
+    `--${boundary}--`,
+  ].join('\r\n')
+
+  return toBase64Url(raw)
 }
 
 export async function sendGmailEmail(params: SendEmailParams): Promise<string> {
@@ -60,20 +119,7 @@ export async function sendGmailEmail(params: SendEmailParams): Promise<string> {
 
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
-  const messageParts = [
-    `To: ${params.to}`,
-    `Subject: ${params.subject}`,
-    'Content-Type: text/plain; charset=utf-8',
-    'MIME-Version: 1.0',
-    '',
-    params.body,
-  ]
-
-  const raw = Buffer.from(messageParts.join('\n'))
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '')
+  const raw = buildRawEmail(params)
 
   const result = await gmail.users.messages.send({
     userId: 'me',

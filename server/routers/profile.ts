@@ -13,6 +13,7 @@ export const profileRouter = router({
     .input(z.object({
       cvText: z.string().optional(),
       cvUrl: z.string().optional(),
+      cvPdfBase64: z.string().optional(),
       jobTitle: z.string().optional(),
       skills: z.array(z.string()).optional(),
       bio: z.string().optional(),

@@ -56,6 +56,17 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Get user profile for CV attachment
+    const profile = await prisma.userProfile.findUnique({
+      where: { userId: session.user.id },
+      select: { cvPdfBase64: true, jobTitle: true },
+    })
+
+    // Build CV filename from job title if available
+    const cvFileName = profile?.jobTitle
+      ? `CV_${profile.jobTitle.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
+      : 'CV.pdf'
+
     // Get all READY emails for this campaign
     const emails = await prisma.generatedEmail.findMany({
       where: { campaignId, status: 'READY' },
@@ -93,6 +104,8 @@ export async function POST(request: NextRequest) {
           subject: email.subject,
           body: email.body,
           accessToken,
+          cvPdfBase64: profile?.cvPdfBase64 ?? undefined,
+          cvFileName,
         })
 
         await prisma.generatedEmail.update({
