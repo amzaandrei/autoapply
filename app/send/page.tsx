@@ -52,6 +52,7 @@ function SendPage() {
   const [sendError, setSendError] = useState<string | null>(null)
 
   const gmailStatus = trpc.gmail.status.useQuery()
+  const profile = trpc.profile.get.useQuery()
   const emails = trpc.emails.list.useQuery(
     { campaignId, status: 'READY' },
     { enabled: !!campaignId }
@@ -122,6 +123,7 @@ function SendPage() {
   const readyEmails = emails.data ?? []
   const alreadySent = sentEmails.data ?? []
   const isGmailConnected = gmailStatus.data?.connected ?? false
+  const hasCvPdf = !!(profile.data?.cvPdfBase64)
 
   const gmailAuthUrl = `/api/gmail/auth${campaignId ? `?state=${campaignId}` : ''}`
 
@@ -201,6 +203,11 @@ function SendPage() {
                         <p className="text-xs text-muted-foreground">
                           To: {email.company.contactEmail ?? '(no email — will be skipped)'}
                         </p>
+                        {hasCvPdf && (
+                          <Badge variant="secondary" className="mt-1 text-xs">
+                            📎 CV attached
+                          </Badge>
+                        )}
                       </div>
                       <div className="text-right text-xs text-muted-foreground max-w-[200px] truncate">
                         {email.subject}

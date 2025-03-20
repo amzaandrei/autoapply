@@ -22,6 +22,7 @@ export default function UploadPage() {
   const [jobTitle, setJobTitle] = useState('')
   const [region, setRegion] = useState('')
   const [cvText, setCvText] = useState('')
+  const [cvPdfBase64, setCvPdfBase64] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [fileName, setFileName] = useState<string | null>(null)
@@ -51,6 +52,15 @@ export default function UploadPage() {
     setUploading(true)
     setFileName(file.name)
     try {
+      // Read PDF as base64 for attachment (only for PDF files)
+      if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        const arrayBuffer = await file.arrayBuffer()
+        const base64 = Buffer.from(arrayBuffer).toString('base64')
+        setCvPdfBase64(base64)
+      } else {
+        setCvPdfBase64(null)
+      }
+
       const formData = new FormData()
       formData.append('file', file)
       const res = await fetch('/api/cv/parse', { method: 'POST', body: formData })
@@ -65,6 +75,7 @@ export default function UploadPage() {
       const message = err instanceof Error ? err.message : 'Parse failed'
       toast.error(message)
       setFileName(null)
+      setCvPdfBase64(null)
     } finally {
       setUploading(false)
     }
@@ -93,7 +104,11 @@ export default function UploadPage() {
       toast.error('Your profile needs a few things before we can apply. Add your CV text.')
       return
     }
-    upsertProfile.mutate({ cvText: cvText || undefined, jobTitle: jobTitle || undefined })
+    upsertProfile.mutate({
+      cvText: cvText || undefined,
+      jobTitle: jobTitle || undefined,
+      cvPdfBase64: cvPdfBase64 || undefined,
+    })
   }
 
   return (
