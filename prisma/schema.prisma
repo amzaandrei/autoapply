@@ -64,18 +64,23 @@ model VerificationToken {
 // ─── AutoApply Models ───────────────────────────────────────────────────────
 
 model UserProfile {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  cvUrl        String?
-  cvText       String?  @db.Text
-  cvPdfBase64  String?  @db.Text
-  jobTitle     String?
-  skills       String[] @default([])
-  bio          String?  @db.Text
-  linkedIn     String?
-  portfolio    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  cvUrl             String?
+  cvText            String?  @db.Text
+  cvPdfBase64       String?  @db.Text
+  jobTitle          String?
+  skills            String[] @default([])
+  bio               String?  @db.Text
+  linkedIn          String?
+  portfolio         String?
+  emailTemplate     String?  @db.Text
+  useEmailTemplate  Boolean  @default(false)
+  signatureName     String?
+  signaturePhone    String?
+  signatureAddress  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

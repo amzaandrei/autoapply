@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 
 interface ProfileData {
   id: string
@@ -25,6 +26,11 @@ interface ProfileData {
     bio: string | null
     linkedIn: string | null
     portfolio: string | null
+    emailTemplate: string | null
+    useEmailTemplate: boolean
+    signatureName: string | null
+    signaturePhone: string | null
+    signatureAddress: string | null
     updatedAt: string
   } | null
 }
@@ -42,6 +48,11 @@ export default function ProfilePage() {
   const [linkedIn, setLinkedIn] = useState('')
   const [portfolio, setPortfolio] = useState('')
   const [skillsInput, setSkillsInput] = useState('')
+  const [emailTemplate, setEmailTemplate] = useState('')
+  const [useEmailTemplate, setUseEmailTemplate] = useState(false)
+  const [signatureName, setSignatureName] = useState('')
+  const [signaturePhone, setSignaturePhone] = useState('')
+  const [signatureAddress, setSignatureAddress] = useState('')
 
   useEffect(() => {
     fetch('/api/profile')
@@ -55,6 +66,11 @@ export default function ProfilePage() {
         setLinkedIn(d.profile?.linkedIn ?? '')
         setPortfolio(d.profile?.portfolio ?? '')
         setSkillsInput((d.profile?.skills ?? []).join(', '))
+        setEmailTemplate(d.profile?.emailTemplate ?? '')
+        setUseEmailTemplate(d.profile?.useEmailTemplate ?? false)
+        setSignatureName(d.profile?.signatureName ?? '')
+        setSignaturePhone(d.profile?.signaturePhone ?? '')
+        setSignatureAddress(d.profile?.signatureAddress ?? '')
       })
       .catch(() => toast.error('Failed to load profile'))
       .finally(() => setLoading(false))
@@ -71,7 +87,10 @@ export default function ProfilePage() {
       const res = await fetch('/api/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, image, jobTitle, bio, linkedIn, portfolio, skills }),
+        body: JSON.stringify({
+          name, image, jobTitle, bio, linkedIn, portfolio, skills,
+          emailTemplate, useEmailTemplate, signatureName, signaturePhone, signatureAddress,
+        }),
       })
 
       if (!res.ok) {
@@ -279,6 +298,86 @@ export default function ProfilePage() {
               onChange={(e) => setPortfolio(e.target.value)}
               placeholder="https://yoursite.com"
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Email Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Email Settings</CardTitle>
+          <CardDescription>
+            Configure your email template and signature for outreach emails.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="useEmailTemplate">Use my own email template instead of AI</Label>
+              <p className="text-xs text-muted-foreground">
+                When enabled, your custom template is used instead of AI-generated content.
+              </p>
+            </div>
+            <Switch
+              id="useEmailTemplate"
+              checked={useEmailTemplate}
+              onCheckedChange={setUseEmailTemplate}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="emailTemplate">Email Blueprint</Label>
+            <Textarea
+              id="emailTemplate"
+              value={emailTemplate}
+              onChange={(e) => setEmailTemplate(e.target.value)}
+              rows={8}
+              placeholder={`Hi,\n\nI'm reaching out about opportunities at {{company}}. I'm very interested in a {{position}} role and believe my background is a strong match.\n\n[Your message here]\n\nLooking forward to hearing from you.`}
+            />
+            <p className="text-xs text-muted-foreground">
+              Use <code className="bg-muted px-1 rounded">{'{{company}}'}</code> and{' '}
+              <code className="bg-muted px-1 rounded">{'{{position}}'}</code> as placeholders — they'll
+              be replaced automatically when generating emails.
+            </p>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Email Signature</Label>
+            <p className="text-xs text-muted-foreground -mt-2">
+              Appended to every outreach email automatically.
+            </p>
+
+            <div className="space-y-1">
+              <Label htmlFor="signatureName">Full Name</Label>
+              <Input
+                id="signatureName"
+                value={signatureName}
+                onChange={(e) => setSignatureName(e.target.value)}
+                placeholder="Jane Doe"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="signaturePhone">Phone</Label>
+              <Input
+                id="signaturePhone"
+                value={signaturePhone}
+                onChange={(e) => setSignaturePhone(e.target.value)}
+                placeholder="+1 555 000 0000"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="signatureAddress">Address</Label>
+              <Input
+                id="signatureAddress"
+                value={signatureAddress}
+                onChange={(e) => setSignatureAddress(e.target.value)}
+                placeholder="City, Country"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
