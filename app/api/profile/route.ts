@@ -26,6 +26,11 @@ export async function GET() {
           bio: true,
           linkedIn: true,
           portfolio: true,
+          emailTemplate: true,
+          useEmailTemplate: true,
+          signatureName: true,
+          signaturePhone: true,
+          signatureAddress: true,
           updatedAt: true,
         },
       },
@@ -65,6 +70,11 @@ export async function PATCH(request: NextRequest) {
     linkedIn?: string
     portfolio?: string
     cvUrl?: string
+    emailTemplate?: string
+    useEmailTemplate?: boolean
+    signatureName?: string
+    signaturePhone?: string
+    signatureAddress?: string
   } = {}
   if (typeof body.jobTitle === 'string') profileUpdates.jobTitle = body.jobTitle.trim()
   if (Array.isArray(body.skills)) profileUpdates.skills = body.skills.map(String)
@@ -72,6 +82,11 @@ export async function PATCH(request: NextRequest) {
   if (typeof body.linkedIn === 'string') profileUpdates.linkedIn = body.linkedIn.trim()
   if (typeof body.portfolio === 'string') profileUpdates.portfolio = body.portfolio.trim()
   if (typeof body.cvUrl === 'string') profileUpdates.cvUrl = body.cvUrl.trim()
+  if (typeof body.emailTemplate === 'string') profileUpdates.emailTemplate = body.emailTemplate
+  if (typeof body.useEmailTemplate === 'boolean') profileUpdates.useEmailTemplate = body.useEmailTemplate
+  if (typeof body.signatureName === 'string') profileUpdates.signatureName = body.signatureName.trim()
+  if (typeof body.signaturePhone === 'string') profileUpdates.signaturePhone = body.signaturePhone.trim()
+  if (typeof body.signatureAddress === 'string') profileUpdates.signatureAddress = body.signatureAddress.trim()
 
   if (Object.keys(userUpdates).length > 0) {
     await prisma.user.update({
@@ -104,6 +119,11 @@ export async function PATCH(request: NextRequest) {
           bio: true,
           linkedIn: true,
           portfolio: true,
+          emailTemplate: true,
+          useEmailTemplate: true,
+          signatureName: true,
+          signaturePhone: true,
+          signatureAddress: true,
         },
       },
     },

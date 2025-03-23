@@ -44,6 +44,15 @@ export async function POST(request: NextRequest) {
       error?: string
     }> = []
 
+    // Build signature block (appended to every email)
+    const signatureParts = [
+      'Best regards,',
+      profile.signatureName ?? '',
+      profile.signaturePhone ?? '',
+      profile.signatureAddress ?? '',
+    ].filter(Boolean)
+    const signatureBlock = signatureParts.join('\n')
+
     for (const company of campaign.companies) {
       try {
         // Delete existing DRAFT emails for this company in this campaign
@@ -51,22 +60,43 @@ export async function POST(request: NextRequest) {
           where: { companyId: company.id, campaignId, status: 'DRAFT' },
         })
 
-        const generated = await generateEmail({
-          cvText: profile.cvText,
-          jobTitle: campaign.jobTitle ?? profile.jobTitle ?? 'Software Engineer',
-          companyName: company.name,
-          companyIndustry: company.industry,
-          companyDescription: company.description,
-          companySize: company.size,
-          contactName: company.contactName,
-        })
+        let subject: string
+        let body: string
+
+        const jobTitle = campaign.jobTitle ?? profile.jobTitle ?? 'Software Engineer'
+
+        if (profile.useEmailTemplate && profile.emailTemplate) {
+          // Use custom template — replace placeholders
+          body = profile.emailTemplate
+            .replace(/\{\{company\}\}/g, company.name)
+            .replace(/\{\{position\}\}/g, jobTitle)
+          subject = `Application for ${jobTitle} position at ${company.name}`
+        } else {
+          // AI generation
+          const generated = await generateEmail({
+            cvText: profile.cvText,
+            jobTitle,
+            companyName: company.name,
+            companyIndustry: company.industry,
+            companyDescription: company.description,
+            companySize: company.size,
+            contactName: company.contactName,
+          })
+          subject = generated.subject
+          body = generated.body
+        }
+
+        // Append signature to every email
+        if (signatureBlock) {
+          body = `${body}\n\n${signatureBlock}`
+        }
 
         const email = await prisma.generatedEmail.create({
           data: {
             companyId: company.id,
             campaignId,
-            subject: generated.subject,
-            body: generated.body,
+            subject,
+            body,
             status: 'DRAFT',
           },
         })
