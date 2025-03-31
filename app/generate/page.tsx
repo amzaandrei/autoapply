@@ -95,8 +95,9 @@ function GeneratePage() {
               Generate Personalized Emails
             </CardTitle>
             <CardDescription>
-              Claude AI writes a tailored application email for each company using your CV and
-              company context. More relevant = more responses.
+              {profile.data?.useEmailTemplate && profile.data?.emailTemplate
+                ? 'Your custom email template will be used for each company.'
+                : 'Claude AI writes a tailored application email for each company using your CV and company context.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -117,7 +118,7 @@ function GeneratePage() {
             {generating && (
               <div className="space-y-2">
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Generating with Claude AI...</span>
+                  <span>{profile.data?.useEmailTemplate && profile.data?.emailTemplate ? 'Filling template...' : 'Generating with Claude AI...'}</span>
                   <span>{results.length}/{total}</span>
                 </div>
                 <Progress value={(results.length / Math.max(total, 1)) * 100} />
@@ -140,7 +141,7 @@ function GeneratePage() {
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4 mr-2" />
-                    Generate All Emails
+                    {profile.data?.useEmailTemplate && profile.data?.emailTemplate ? 'Fill Template for All Companies' : 'Generate All Emails'}
                   </>
                 )}
               </Button>
