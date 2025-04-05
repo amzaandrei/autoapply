@@ -403,7 +403,9 @@ export default function DiscoverPage() {
                   onClick={() => router.push(`/generate?campaignId=${campaignId}`)}
                   disabled={!companies.data?.length}
                 >
-                  Continue to Email Generation
+                  {profile.data?.useEmailTemplate && profile.data?.emailTemplate
+                    ? 'Continue to Email Preparation'
+                    : 'Continue to Email Generation'}
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               </CardContent>
