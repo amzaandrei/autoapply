@@ -332,6 +332,8 @@ export default function ProfilePage() {
               value={emailTemplate}
               onChange={(e) => setEmailTemplate(e.target.value)}
               rows={8}
+              disabled={!useEmailTemplate}
+              className={!useEmailTemplate ? 'opacity-50 cursor-not-allowed' : ''}
               placeholder={`Hi,\n\nI'm reaching out about opportunities at {{company}}. I'm very interested in a {{position}} role and believe my background is a strong match.\n\n[Your message here]\n\nLooking forward to hearing from you.`}
             />
             <p className="text-xs text-muted-foreground">
