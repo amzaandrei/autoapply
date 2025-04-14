@@ -65,9 +65,10 @@ export async function POST(request: NextRequest) {
 
         const jobTitle = campaign.jobTitle ?? profile.jobTitle ?? 'Software Engineer'
 
-        if (profile.useEmailTemplate && profile.emailTemplate) {
-          // Use custom template — replace placeholders
-          body = profile.emailTemplate
+        const defaultTemplate = `Hi,\n\nI'm reaching out about opportunities at {{company}}. I'm very interested in a {{position}} role and believe my background is a strong match.\n\n[Your message here]\n\nLooking forward to hearing from you.`
+        if (profile.useEmailTemplate) {
+          // Use custom template (or default placeholder if empty) — replace placeholders
+          body = (profile.emailTemplate?.trim() || defaultTemplate)
             .replace(/\{\{company\}\}/g, company.name)
             .replace(/\{\{position\}\}/g, jobTitle)
           subject = `Application for ${jobTitle} position at ${company.name}`

@@ -77,10 +77,6 @@ export default function ProfilePage() {
   }, [])
 
   async function handleSave() {
-    if (useEmailTemplate && !emailTemplate.trim()) {
-      toast.error('Please fill in your email blueprint before enabling template mode.')
-      return
-    }
     setSaving(true)
     try {
       const skills = skillsInput
@@ -328,12 +324,6 @@ export default function ProfilePage() {
               onCheckedChange={setUseEmailTemplate}
             />
           </div>
-
-          {useEmailTemplate && !emailTemplate.trim() && (
-            <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-              ⚠️ Template mode is ON but your blueprint is empty — AI will still be used until you fill it in.
-            </p>
-          )}
 
           <div className="space-y-1">
             <Label htmlFor="emailTemplate">Email Blueprint</Label>
