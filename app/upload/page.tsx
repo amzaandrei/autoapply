@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
@@ -19,8 +18,6 @@ export default function UploadPage() {
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [jobTitle, setJobTitle] = useState('')
-  const [region, setRegion] = useState('')
   const [cvText, setCvText] = useState('')
   const [cvPdfBase64, setCvPdfBase64] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -106,7 +103,6 @@ export default function UploadPage() {
     }
     upsertProfile.mutate({
       cvText: cvText || undefined,
-      jobTitle: jobTitle || undefined,
       cvPdfBase64: cvPdfBase64 || undefined,
     })
   }
@@ -191,30 +187,6 @@ export default function UploadPage() {
               />
             </div>
 
-            <Separator />
-
-            {/* Job Targets */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="job-title">Target Job Title</Label>
-                <Input
-                  id="job-title"
-                  placeholder="e.g. Senior Software Engineer"
-                  value={jobTitle}
-                  onChange={(e) => setJobTitle(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="region">Target Region</Label>
-                <Input
-                  id="region"
-                  placeholder="e.g. London, Remote, NYC"
-                  value={region}
-                  onChange={(e) => setRegion(e.target.value)}
-                />
-              </div>
-            </div>
-
             {profile.data?.cvText && !cvText && (
               <div className="flex items-center gap-2 p-3 bg-muted rounded-md">
                 <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
@@ -236,14 +208,14 @@ export default function UploadPage() {
                 </>
               ) : (
                 <>
-                  Set My Targets <ArrowRight className="h-4 w-4 ml-2" />
+                  Save & Continue <ArrowRight className="h-4 w-4 ml-2" />
                 </>
               )}
             </Button>
 
             {step === 'confirm' && (
               <p className="text-xs text-center text-muted-foreground">
-                CV parsed. Add your target job title and region, then continue.
+                CV parsed. Review and continue.
               </p>
             )}
           </CardContent>
