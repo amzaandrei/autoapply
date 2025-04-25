@@ -53,12 +53,24 @@ export async function generateEmail(params: {
   contactName?: string | null
 }): Promise<GeneratedEmailResult> {
   const cvSummary = params.cvText.slice(0, 3000)
+  const greeting = params.contactName ? `Dear ${params.contactName},` : 'Dear Hiring Team,'
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
-    system: `You are an expert job application writer. Write a compelling, personalized cold outreach email.
-Be concise, professional, and specific to the company.
-Return ONLY valid JSON with keys "subject" and "body". No markdown fences.`,
+    system: `You are an expert job application writer. Write compelling, personalized cold outreach emails.
+
+CRITICAL RULES:
+- NEVER output placeholder text like [Your message here], [insert X], or any bracketed placeholders — write real content always
+- Use the actual company name throughout, never "the company"
+- Keep the total body under 200 words
+- Professional but natural tone — not robotic
+- Do NOT include phone numbers in the email body
+- Return ONLY valid JSON with keys "subject" and "body". No markdown fences.
+
+Body structure (3 paragraphs):
+1. Opening: specific to this company — mention something real about them or why you want to work there. 2-3 sentences.
+2. Middle: connect your CV skills to what the company likely needs. Mention 1-2 specific skills or experiences. 2-3 sentences.
+3. Closing: clear call to action, offer to discuss further. 1-2 sentences.`,
     messages: [
       {
         role: 'user',
@@ -74,8 +86,10 @@ ${params.contactName ? `Contact: ${params.contactName}` : ''}
 My CV (summary):
 ${cvSummary}
 
-Write a 3-4 paragraph email. Keep it concise and compelling.
-Return JSON: {"subject": "...", "body": "..."}`,
+Start the body with: "${greeting}"
+End with: "Best regards," (the signature will be appended separately — do NOT include name, email, or phone at the end)
+
+Return JSON: {"subject": "Application for ${params.jobTitle} at ${params.companyName}", "body": "..."}`,
       },
     ],
   })

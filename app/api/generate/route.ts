@@ -44,14 +44,12 @@ export async function POST(request: NextRequest) {
       error?: string
     }> = []
 
-    // Build signature block (appended to every email)
+    // Build signature block (appended to every email — no phone in body)
     const signatureParts = [
-      'Best regards,',
       profile.signatureName ?? '',
-      profile.signaturePhone ?? '',
       profile.signatureAddress ?? '',
     ].filter(Boolean)
-    const signatureBlock = signatureParts.join('\n')
+    const signatureBlock = signatureParts.length > 0 ? signatureParts.join('\n') : ''
 
     for (const company of campaign.companies) {
       try {
@@ -65,13 +63,14 @@ export async function POST(request: NextRequest) {
 
         const jobTitle = campaign.jobTitle ?? profile.jobTitle ?? 'Software Engineer'
 
-        const defaultTemplate = `Hi,\n\nI'm reaching out about opportunities at {{company}}. I'm very interested in a {{position}} role and believe my background is a strong match.\n\n[Your message here]\n\nLooking forward to hearing from you.`
+        const defaultTemplate = `Dear Hiring Team,\n\nI'm reaching out about opportunities at {{company}}. I'm very interested in a {{position}} role and believe my background is a strong match.\n\nI'd love to discuss how my experience could contribute to your team.\n\nBest regards,`
         if (profile.useEmailTemplate) {
-          // Use custom template (or default placeholder if empty) — replace placeholders
+          // Use custom template (or default if empty) — replace placeholders, strip any remaining unfilled {{vars}}
           body = (profile.emailTemplate?.trim() || defaultTemplate)
             .replace(/\{\{company\}\}/g, company.name)
             .replace(/\{\{position\}\}/g, jobTitle)
-          subject = `Application for ${jobTitle} position at ${company.name}`
+            .replace(/\{\{[^}]+\}\}/g, '')
+          subject = `Application for ${jobTitle} at ${company.name}`
         } else {
           // AI generation
           const generated = await generateEmail({
@@ -87,9 +86,9 @@ export async function POST(request: NextRequest) {
           body = generated.body
         }
 
-        // Append signature to every email
+        // Append name/address signature (phone excluded from body)
         if (signatureBlock) {
-          body = `${body}\n\n${signatureBlock}`
+          body = `${body}\n${signatureBlock}`
         }
 
         const email = await prisma.generatedEmail.create({
