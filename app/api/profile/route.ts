@@ -21,6 +21,7 @@ export async function GET() {
           id: true,
           cvUrl: true,
           cvText: true,
+          cvPdfBase64: true,
           jobTitle: true,
           skills: true,
           bio: true,
@@ -70,6 +71,8 @@ export async function PATCH(request: NextRequest) {
     linkedIn?: string
     portfolio?: string
     cvUrl?: string
+    cvText?: string
+    cvPdfBase64?: string
     emailTemplate?: string
     useEmailTemplate?: boolean
     signatureName?: string
@@ -82,6 +85,8 @@ export async function PATCH(request: NextRequest) {
   if (typeof body.linkedIn === 'string') profileUpdates.linkedIn = body.linkedIn.trim()
   if (typeof body.portfolio === 'string') profileUpdates.portfolio = body.portfolio.trim()
   if (typeof body.cvUrl === 'string') profileUpdates.cvUrl = body.cvUrl.trim()
+  if (typeof body.cvText === 'string') profileUpdates.cvText = body.cvText
+  if (typeof body.cvPdfBase64 === 'string') profileUpdates.cvPdfBase64 = body.cvPdfBase64
   if (typeof body.emailTemplate === 'string') profileUpdates.emailTemplate = body.emailTemplate
   if (typeof body.useEmailTemplate === 'boolean') profileUpdates.useEmailTemplate = body.useEmailTemplate
   if (typeof body.signatureName === 'string') profileUpdates.signatureName = body.signatureName.trim()
@@ -114,6 +119,7 @@ export async function PATCH(request: NextRequest) {
         select: {
           cvUrl: true,
           cvText: true,
+          cvPdfBase64: true,
           jobTitle: true,
           skills: true,
           bio: true,

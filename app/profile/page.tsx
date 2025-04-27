@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -21,6 +21,7 @@ interface ProfileData {
     id: string
     cvUrl: string | null
     cvText: string | null
+    cvPdfBase64: string | null
     jobTitle: string | null
     skills: string[]
     bio: string | null
@@ -39,6 +40,9 @@ export default function ProfilePage() {
   const [data, setData] = useState<ProfileData | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [showReplaceUpload, setShowReplaceUpload] = useState(false)
+  const [replacingCv, setReplacingCv] = useState(false)
+  const replaceFileInputRef = useRef<HTMLInputElement>(null)
 
   // Editable form state
   const [name, setName] = useState('')
@@ -75,6 +79,46 @@ export default function ProfilePage() {
       .catch(() => toast.error('Failed to load profile'))
       .finally(() => setLoading(false))
   }, [])
+
+  async function handleReplaceCV(file: File) {
+    const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    if (!allowed.includes(file.type) && !file.name.endsWith('.docx') && !file.name.endsWith('.pdf')) {
+      toast.error("Try a PDF or Word doc under 5MB.")
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Keep it under 5MB.')
+      return
+    }
+    setReplacingCv(true)
+    try {
+      let cvPdfBase64: string | undefined
+      if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        const arrayBuffer = await file.arrayBuffer()
+        cvPdfBase64 = Buffer.from(arrayBuffer).toString('base64')
+      }
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/cv/parse', { method: 'POST', body: formData })
+      const parsed = await res.json() as { cvText?: string; error?: string }
+      if (!res.ok) throw new Error(parsed.error ?? 'Parse failed')
+
+      const patchRes = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cvText: parsed.cvText, cvPdfBase64 }),
+      })
+      if (!patchRes.ok) throw new Error('Failed to save CV')
+      const updated: ProfileData = await patchRes.json()
+      setData(updated)
+      setShowReplaceUpload(false)
+      toast.success('CV replaced successfully.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to replace CV')
+    } finally {
+      setReplacingCv(false)
+    }
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -195,42 +239,100 @@ export default function ProfilePage() {
       {/* CV / Resume */}
       <Card>
         <CardHeader>
-          <CardTitle>CV / Resume</CardTitle>
-          <CardDescription>
-            Your uploaded CV content used when generating application emails.
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Your CV</CardTitle>
+              <CardDescription>
+                Your uploaded CV used when generating application emails.
+              </CardDescription>
+            </div>
+            {data.profile?.cvPdfBase64 && (
+              <Badge className="bg-green-100 text-green-700 border-green-300 shrink-0">
+                ✓ Uploaded
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {cvFilename && (
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">📄 {cvFilename}</Badge>
-            </div>
-          )}
-          {data.profile?.cvText ? (
-            <div className="space-y-1">
-              <Label>Extracted CV Text</Label>
-              <Textarea
-                value={data.profile.cvText}
-                readOnly
-                rows={10}
-                className="bg-muted cursor-not-allowed font-mono text-xs"
+          {data.profile?.cvPdfBase64 ? (
+            <>
+              <iframe
+                src={`data:application/pdf;base64,${data.profile.cvPdfBase64}`}
+                className="w-full rounded-md border"
+                style={{ height: '500px' }}
+                title="CV Preview"
               />
-              <p className="text-xs text-muted-foreground">
-                To update your CV, go to the{' '}
-                <a href="/upload" className="underline hover:text-foreground">
-                  Upload page
-                </a>
-                .
-              </p>
-            </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowReplaceUpload((v) => !v)
+                    if (!showReplaceUpload) setTimeout(() => replaceFileInputRef.current?.click(), 50)
+                  }}
+                  disabled={replacingCv}
+                >
+                  {replacingCv ? 'Uploading…' : 'Replace CV'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const link = document.createElement('a')
+                    link.href = `data:application/pdf;base64,${data.profile!.cvPdfBase64}`
+                    link.download = cvFilename ?? 'cv.pdf'
+                    link.click()
+                  }}
+                >
+                  Download CV
+                </Button>
+              </div>
+              <input
+                ref={replaceFileInputRef}
+                type="file"
+                accept=".pdf,.docx"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) void handleReplaceCV(file)
+                  e.target.value = ''
+                }}
+              />
+            </>
           ) : (
-            <div className="text-sm text-muted-foreground">
-              No CV uploaded yet.{' '}
-              <a href="/upload" className="underline hover:text-foreground">
-                Upload your CV
-              </a>{' '}
-              to get started.
-            </div>
+            <>
+              {cvFilename && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">📄 {cvFilename}</Badge>
+                </div>
+              )}
+              {data.profile?.cvText ? (
+                <div className="space-y-1">
+                  <Label>Extracted CV Text</Label>
+                  <Textarea
+                    value={data.profile.cvText}
+                    readOnly
+                    rows={10}
+                    className="bg-muted cursor-not-allowed font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    To update your CV, go to the{' '}
+                    <a href="/upload" className="underline hover:text-foreground">
+                      Upload page
+                    </a>
+                    .
+                  </p>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  No CV uploaded yet.{' '}
+                  <a href="/upload" className="underline hover:text-foreground">
+                    Upload your CV
+                  </a>{' '}
+                  to get started.
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
