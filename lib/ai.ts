@@ -87,9 +87,13 @@ My CV (summary):
 ${cvSummary}
 
 Start the body with: "${greeting}"
-End with: "Best regards," (the signature will be appended separately — do NOT include name, email, or phone at the end)
 
-Return JSON: {"subject": "Application for ${params.jobTitle} at ${params.companyName}", "body": "..."}`,
+IMPORTANT FORMATTING: Each paragraph MUST be separated by \\n\\n (two newlines) in the JSON string. The body must have exactly 3 paragraphs + the sign-off, each on its own block.
+
+End with: "Best regards," on its own line (signature appended separately — do NOT include name, email, or phone).
+
+Return JSON where the body uses \\n\\n between every paragraph:
+{"subject": "Application for ${params.jobTitle} at ${params.companyName}", "body": "Dear Hiring Team,\\n\\nParagraph 1 here.\\n\\nParagraph 2 here.\\n\\nParagraph 3 here.\\n\\nBest regards,"}`,
       },
     ],
   })
@@ -99,7 +103,17 @@ Return JSON: {"subject": "Application for ${params.jobTitle} at ${params.company
 
   const raw = text.text.trim()
   const jsonStr = raw.startsWith('{') ? raw : raw.match(/\{[\s\S]*\}/)?.[0] ?? raw
-  return JSON.parse(jsonStr) as GeneratedEmailResult
+  const result = JSON.parse(jsonStr) as GeneratedEmailResult
+
+  // Ensure paragraph breaks exist — if Claude returned a flat string, 
+  // split on sentence-ending punctuation followed by capital letters
+  if (result.body && !result.body.includes('\n')) {
+    result.body = result.body
+      .replace(/\. (Dear |I |My |With |Thank |Best |Please |Having )/g, '.\n\n$1')
+      .replace(/(Best regards,)/g, '\n\n$1')
+  }
+
+  return result
 }
 
 export async function discoverCompanies(params: {

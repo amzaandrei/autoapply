@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
       where: { userId: session.user.id },
     })
 
+
+
     if (!profile?.cvText) {
       return NextResponse.json({ error: 'No CV found. Upload your CV first.' }, { status: 400 })
     }
@@ -44,9 +46,10 @@ export async function POST(request: NextRequest) {
       error?: string
     }> = []
 
-    // Build signature block (appended to every email — no phone in body)
+    // Build signature block (appended to every email)
     const signatureParts = [
       profile.signatureName ?? '',
+      profile.signaturePhone ?? '',
       profile.signatureAddress ?? '',
     ].filter(Boolean)
     const signatureBlock = signatureParts.length > 0 ? signatureParts.join('\n') : ''

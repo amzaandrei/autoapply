@@ -1,6 +1,13 @@
 import { google } from 'googleapis'
 import type { OAuth2Client } from 'google-auth-library'
 
+function toHtml(text: string): string {
+  return text
+    .split(/\n\n+/)
+    .map(para => `<p style="margin:0 0 14px 0;line-height:1.6;">${para.replace(/\n/g, '<br>')}</p>`)
+    .join('')
+}
+
 export function getOAuth2Client(): OAuth2Client {
   return new google.auth.OAuth2(
     process.env.GMAIL_CLIENT_ID,
@@ -68,14 +75,17 @@ function buildRawEmail(params: SendEmailParams): string {
   const { to, subject, body, cvPdfBase64, cvFileName } = params
 
   if (!cvPdfBase64) {
-    // Simple plain-text email (no attachment)
+    // HTML email without attachment — convert plain text to HTML then base64 encode
+    const htmlContent = toHtml(body)
+    const htmlBase64 = Buffer.from(htmlContent).toString('base64').match(/.{1,76}/g)?.join('\r\n') ?? Buffer.from(htmlContent).toString('base64')
     const messageParts = [
       `To: ${to}`,
       `Subject: ${subject}`,
-      'Content-Type: text/html; charset=utf-8',
       'MIME-Version: 1.0',
+      'Content-Type: text/html; charset=UTF-8',
+      'Content-Transfer-Encoding: base64',
       '',
-      body,
+      htmlBase64,
     ]
     return toBase64Url(messageParts.join('\r\n'))
   }
@@ -84,7 +94,7 @@ function buildRawEmail(params: SendEmailParams): string {
   const boundary = `AutoApply_boundary_${Date.now()}`
   const fileName = cvFileName ?? 'CV.pdf'
 
-  const bodyBase64 = Buffer.from(body).toString('base64')
+  const bodyBase64 = Buffer.from(toHtml(body)).toString('base64')
   // chunk the base64 attachment into 76-char lines (RFC 2045)
   const pdfChunked = cvPdfBase64.match(/.{1,76}/g)?.join('\r\n') ?? cvPdfBase64
 
