@@ -148,6 +148,7 @@ export default function DiscoverPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 py-12">
+        <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push('/upload')}>← Back to Upload</Button>
         <StepIndicator currentStep={1} campaignId={campaignId ?? undefined} />
 
         {/* Step 1: Create campaign */}
@@ -413,12 +414,6 @@ export default function DiscoverPage() {
           </div>
         )}
 
-        {/* Back navigation */}
-        <div className="mt-8 flex">
-          <Button variant="ghost" onClick={() => router.push('/upload')}>
-            ← Back
-          </Button>
-        </div>
       </div>
     </div>
   )

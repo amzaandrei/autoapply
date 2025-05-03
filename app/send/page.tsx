@@ -130,7 +130,7 @@ function SendPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 py-12">
-        <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">← Dashboard</Link>
+        <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push(`/review?campaignId=${campaignId}`)}>← Back to Review</Button>
         <StepIndicator currentStep={4} campaignId={campaignId} />
 
         <div className="space-y-6">
@@ -371,12 +371,6 @@ function SendPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Back navigation */}
-        <div className="mt-8 flex">
-          <Button variant="ghost" onClick={() => router.push(`/review?campaignId=${campaignId}`)}>
-            ← Back
-          </Button>
-        </div>
       </div>
     </div>
   )
