@@ -133,14 +133,13 @@ export default async function DashboardPage() {
           <Card>
             <CardContent className="py-16 text-center">
               <Sparkles className="h-12 w-12 mx-auto mb-4 text-primary opacity-50" />
-              <h3 className="text-lg font-semibold">Your job search on autopilot.</h3>
+              <h3 className="text-lg font-semibold">No campaigns yet.</h3>
               <p className="text-muted-foreground text-sm mt-2 max-w-md mx-auto">
-                Upload your resume, discover companies, and let AutoApply fire off tailored
-                applications while you prep for interviews.
+                Start by uploading your CV.
               </p>
               <Link href="/upload" className="inline-block mt-6">
                 <Button size="lg">
-                  Let&apos;s go <ArrowRight className="h-4 w-4 ml-2" />
+                  Upload CV <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               </Link>
             </CardContent>

@@ -10,7 +10,6 @@ import { Progress } from '@/components/ui/progress'
 import { toast } from 'sonner'
 import { Sparkles, Loader2, CheckCircle, XCircle, ArrowRight, Building2 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
-import Link from 'next/link'
 
 interface GenerateResult {
   companyId: string
@@ -85,7 +84,7 @@ function GeneratePage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 py-12">
-        <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">← Dashboard</Link>
+        <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push('/discover')}>← Back to Jobs</Button>
         <StepIndicator currentStep={2} campaignId={campaignId} />
 
         <Card>
@@ -193,12 +192,6 @@ function GeneratePage() {
           </CardContent>
         </Card>
 
-        {/* Back navigation */}
-        <div className="mt-6 flex">
-          <Button variant="ghost" onClick={() => router.push('/upload')}>
-            ← Back
-          </Button>
-        </div>
       </div>
     </div>
   )

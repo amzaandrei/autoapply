@@ -110,7 +110,6 @@ export default function UploadPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 py-12">
-        <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">← Dashboard</Link>
         <StepIndicator currentStep={1} />
 
         <Card>
