@@ -10,14 +10,15 @@ interface StepConfig {
 }
 
 const STEPS: StepConfig[] = [
-  { label: 'Upload CV', href: '/upload'   },
-  { label: 'Generate',  href: '/generate' },
-  { label: 'Review',    href: '/review'   },
-  { label: 'Send',      href: '/send'     },
+  { label: 'Upload',   href: '/upload'   },
+  { label: 'Discover', href: '/discover' },
+  { label: 'Generate', href: '/generate' },
+  { label: 'Review',   href: '/review'   },
+  { label: 'Send',     href: '/send'     },
 ]
 
 interface StepIndicatorProps {
-  currentStep: 1 | 2 | 3 | 4
+  currentStep: 1 | 2 | 3 | 4 | 5
   campaignId?: string
 }
 
@@ -34,7 +35,7 @@ export function StepIndicator({ currentStep, campaignId }: StepIndicatorProps) {
     <nav aria-label="Progress" className="mb-8">
       <ol className="flex items-center gap-0">
         {STEPS.map((step, idx) => {
-          const stepNum = (idx + 1) as 1 | 2 | 3 | 4
+          const stepNum = (idx + 1) as 1 | 2 | 3 | 4 | 5
           const isComplete = stepNum < currentStep
           const isCurrent = stepNum === currentStep
           const isClickable = isComplete

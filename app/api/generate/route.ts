@@ -10,8 +10,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json() as { campaignId: string }
-    const { campaignId } = body
+    const body = await request.json() as { campaignId: string; companyId?: string }
+    const { campaignId, companyId } = body
 
     if (!campaignId) {
       return NextResponse.json({ error: 'campaignId required' }, { status: 400 })
@@ -21,7 +21,12 @@ export async function POST(request: NextRequest) {
     const campaign = await prisma.campaign.findFirst({
       where: { id: campaignId, userId: session.user.id },
       include: {
-        companies: { where: { status: { not: 'ARCHIVED' } } },
+        companies: {
+          where: {
+            status: { not: 'ARCHIVED' },
+            ...(companyId ? { id: companyId } : {}),
+          },
+        },
       },
     })
 
@@ -84,6 +89,7 @@ export async function POST(request: NextRequest) {
             companyDescription: company.description,
             companySize: company.size,
             contactName: company.contactName,
+            skills: profile.skills ?? [],
           })
           subject = generated.subject
           body = generated.body

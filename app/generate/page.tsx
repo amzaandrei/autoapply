@@ -25,7 +25,6 @@ function GeneratePage() {
 
   const [generating, setGenerating] = useState(false)
   const [results, setResults] = useState<GenerateResult[]>([])
-  const [progress, setProgress] = useState(0)
   const [done, setDone] = useState(false)
 
   const companies = trpc.companies.list.useQuery({ campaignId }, { enabled: !!campaignId })
@@ -46,7 +45,6 @@ function GeneratePage() {
 
     setGenerating(true)
     setResults([])
-    setProgress(0)
     setDone(false)
 
     try {
@@ -66,7 +64,6 @@ function GeneratePage() {
       if (!res.ok) throw new Error(data.error ?? 'Generation failed')
 
       setResults(data.results ?? [])
-      setProgress(100)
       setDone(true)
 
       if ((data.generated ?? 0) > 0) {
@@ -85,7 +82,7 @@ function GeneratePage() {
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 py-12">
         <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push('/discover')}>← Back to Jobs</Button>
-        <StepIndicator currentStep={2} campaignId={campaignId} />
+        <StepIndicator currentStep={3} campaignId={campaignId} />
 
         <Card>
           <CardHeader>
@@ -118,9 +115,9 @@ function GeneratePage() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>{profile.data?.useEmailTemplate && profile.data?.emailTemplate ? 'Filling template...' : 'Generating with Claude AI...'}</span>
-                  <span>{results.length}/{total}</span>
+                  <span>{total} {total === 1 ? 'company' : 'companies'}</span>
                 </div>
-                <Progress value={(results.length / Math.max(total, 1)) * 100} />
+                <Progress value={undefined} className="animate-pulse" />
               </div>
             )}
 
@@ -135,7 +132,7 @@ function GeneratePage() {
                 {generating ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Generating {results.length + 1} of {total}...
+                    Generating emails for {total} {total === 1 ? 'company' : 'companies'}...
                   </>
                 ) : (
                   <>

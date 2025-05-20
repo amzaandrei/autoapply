@@ -95,7 +95,7 @@ export default function ProfilePage() {
       let cvPdfBase64: string | undefined
       if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
         const arrayBuffer = await file.arrayBuffer()
-        cvPdfBase64 = Buffer.from(arrayBuffer).toString('base64')
+        cvPdfBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
       }
       const formData = new FormData()
       formData.append('file', file)

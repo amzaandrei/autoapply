@@ -51,6 +51,7 @@ export async function generateEmail(params: {
   companyDescription?: string | null
   companySize?: string | null
   contactName?: string | null
+  skills?: string[]
 }): Promise<GeneratedEmailResult> {
   const cvSummary = params.cvText.slice(0, 3000)
   const greeting = params.contactName ? `Dear ${params.contactName},` : 'Dear Hiring Team,'
@@ -82,6 +83,7 @@ ${params.companyIndustry ? `Industry: ${params.companyIndustry}` : ''}
 ${params.companySize ? `Company Size: ${params.companySize}` : ''}
 ${params.companyDescription ? `About the company: ${params.companyDescription}` : ''}
 ${params.contactName ? `Contact: ${params.contactName}` : ''}
+${params.skills && params.skills.length > 0 ? `Key Skills: ${params.skills.join(', ')}` : ''}
 
 My CV (summary):
 ${cvSummary}
