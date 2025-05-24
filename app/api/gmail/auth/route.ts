@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', process.env.NEXTAUTH_URL ?? 'http://localhost:3000'))
   }
 
-  const campaignId = request.nextUrl.searchParams.get('campaignId') ?? undefined
+  const campaignId = request.nextUrl.searchParams.get('state') ?? undefined
   const oauth2Client = getOAuth2Client()
   const authUrl = getGmailAuthUrl(oauth2Client, campaignId)
 

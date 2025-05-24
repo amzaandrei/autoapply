@@ -149,7 +149,7 @@ export default function DiscoverPage() {
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push('/upload')}>← Back to Upload</Button>
-        <StepIndicator currentStep={1} campaignId={campaignId ?? undefined} />
+        <StepIndicator currentStep={2} campaignId={campaignId ?? undefined} />
 
         {/* Step 1: Create campaign */}
         {!campaignId ? (
@@ -196,7 +196,7 @@ export default function DiscoverPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-2">
                     <Label>Job Title</Label>
                     <Input
@@ -353,6 +353,17 @@ export default function DiscoverPage() {
                     >
                       Add
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setShowManual(false)
+                        setManualName('')
+                        setManualEmail('')
+                      }}
+                    >
+                      Cancel
+                    </Button>
                   </div>
                 )}
 
@@ -392,8 +403,7 @@ export default function DiscoverPage() {
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
                     <Building2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">Nothing sent yet — but that&apos;s about to change.</p>
-                    <p className="text-xs mt-1">Use AI discovery above or add companies manually.</p>
+                    <p className="text-sm">No companies added yet. Search above to find matching companies.</p>
                   </div>
                 )}
 

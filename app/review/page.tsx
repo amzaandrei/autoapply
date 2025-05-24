@@ -19,6 +19,7 @@ import {
   X,
   Mail,
   Loader2,
+  RefreshCw,
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
 
@@ -30,6 +31,7 @@ function ReviewPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editSubject, setEditSubject] = useState('')
   const [editBody, setEditBody] = useState('')
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
 
   const emails = trpc.emails.list.useQuery({ campaignId }, { enabled: !!campaignId })
 
@@ -80,6 +82,25 @@ function ReviewPage() {
     updateEmail.mutate({ id: editingId, subject: editSubject, body: editBody })
   }
 
+  const regenerateEmail = async (emailId: string, companyId: string) => {
+    setRegeneratingId(emailId)
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId, companyId }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Regeneration failed')
+      await emails.refetch()
+      toast.success('Email regenerated')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Regeneration failed')
+    } finally {
+      setRegeneratingId(null)
+    }
+  }
+
   const totalEmails = emails.data?.length ?? 0
   const readyCount = emails.data?.filter((e) => e.status === 'READY').length ?? 0
 
@@ -87,7 +108,7 @@ function ReviewPage() {
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 py-12">
         <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push(`/generate?campaignId=${campaignId}`)}>← Back to Generate</Button>
-        <StepIndicator currentStep={3} campaignId={campaignId} />
+        <StepIndicator currentStep={4} campaignId={campaignId} />
 
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -166,6 +187,20 @@ function ReviewPage() {
                             <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
                           </Button>
                         )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          title="Regenerate"
+                          onClick={() => void regenerateEmail(email.id, email.company.id)}
+                          disabled={regeneratingId === email.id}
+                        >
+                          {regeneratingId === email.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
                         <Button
                           size="icon"
                           variant="ghost"
@@ -257,10 +292,7 @@ function ReviewPage() {
           {emails.data?.length === 0 && (
             <div className="text-center py-16 text-muted-foreground">
               <Mail className="h-10 w-10 mx-auto mb-3 opacity-20" />
-              <p className="font-medium">Nothing sent yet — but that&apos;s about to change.</p>
-              <p className="text-sm mt-1">
-                Go back to Generate to create emails for your companies.
-              </p>
+              <p className="font-medium">No emails generated yet. Go back to Generate to create your emails.</p>
             </div>
           )}
         </div>

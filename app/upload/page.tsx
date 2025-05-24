@@ -52,7 +52,7 @@ export default function UploadPage() {
       // Read PDF as base64 for attachment (only for PDF files)
       if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
         const arrayBuffer = await file.arrayBuffer()
-        const base64 = Buffer.from(arrayBuffer).toString('base64')
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
         setCvPdfBase64(base64)
       } else {
         setCvPdfBase64(null)
