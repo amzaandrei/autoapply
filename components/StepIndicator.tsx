@@ -22,8 +22,13 @@ interface StepIndicatorProps {
   campaignId?: string
 }
 
-function buildHref(step: StepConfig, campaignId?: string): string {
-  const needsId = ['/generate', '/review', '/send'].includes(step.href)
+function buildHref(step: StepConfig, campaignId?: string, currentStep?: number): string {
+  // Upload step goes to dashboard when inside a campaign flow
+  if (currentStep && currentStep > 1 && step.href === '/upload') {
+    return '/dashboard'
+  }
+  // Discover and campaign steps get campaignId
+  const needsId = ['/discover', '/generate', '/review', '/send'].includes(step.href)
   if (needsId && campaignId) return `${step.href}?campaignId=${campaignId}`
   return step.href
 }
@@ -47,7 +52,7 @@ export function StepIndicator({ currentStep, campaignId }: StepIndicatorProps) {
                 type="button"
                 disabled={!isClickable}
                 onClick={() => {
-                  if (isClickable) router.push(buildHref(step, campaignId))
+                  if (isClickable) router.push(buildHref(step, campaignId, currentStep))
                 }}
                 className={cn(
                   'flex flex-col items-center gap-1 group',

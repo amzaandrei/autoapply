@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
-import { sendGmailEmail, getValidAccessToken } from '@/lib/gmail'
+import { sendGmailEmail } from '@/lib/gmail'
+import { invalidateAppliedCache } from '@/server/routers/regions'
 
 export interface SendResult {
   emailId: string
@@ -46,17 +47,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Get valid access token (refresh if needed)
-    const accessToken = await getValidAccessToken(gmailToken)
-
-    // Update stored token if refreshed
-    if (accessToken !== gmailToken.accessToken) {
+    let accessToken: string
+    const isExpired = gmailToken.expiresAt && new Date() > new Date(gmailToken.expiresAt.getTime() - 60_000)
+    if (isExpired) {
+      if (!gmailToken.refreshToken) throw new Error('Gmail token expired and no refresh token available')
+      const { refreshAccessToken } = await import('@/lib/gmail')
+      const refreshed = await refreshAccessToken(gmailToken.refreshToken)
+      accessToken = refreshed.accessToken
+      // Persist all refreshed token fields
       await prisma.gmailToken.update({
         where: { userId: session.user.id },
-        data: { accessToken },
+        data: {
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken ?? gmailToken.refreshToken,
+          expiresAt: refreshed.expiresAt,
+        },
       })
+    } else {
+      accessToken = gmailToken.accessToken
     }
 
-    // Get user profile for CV attachment
+    // Get user info for From header and CV attachment
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { name: true, email: true },
+    })
+    const fromHeader = user?.name ? `${user.name} <${user.email}>` : user?.email ?? ''
+
     const profile = await prisma.userProfile.findUnique({
       where: { userId: session.user.id },
       select: { cvPdfBase64: true, jobTitle: true },
@@ -82,9 +99,29 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Get all contact emails we've already sent to (across ALL campaigns)
+    const alreadySentEmails = await prisma.generatedEmail.findMany({
+      where: {
+        campaign: { userId: session.user.id },
+        status: { in: ['SENT', 'OPENED', 'REPLIED'] },
+      },
+      select: { company: { select: { contactEmail: true } } },
+    })
+    const sentEmailSet = new Set(
+      alreadySentEmails
+        .map((e) => e.company.contactEmail?.toLowerCase())
+        .filter(Boolean) as string[]
+    )
+
     const results: SendResult[] = []
+    let isFirst = true
 
     for (const email of emails) {
+      // Random delay between sends (2-5s) to avoid burst-sending spam triggers
+      if (!isFirst) {
+        await new Promise((r) => setTimeout(r, 2000 + Math.random() * 3000))
+      }
+      isFirst = false
       const to = email.company.contactEmail
 
       if (!to) {
@@ -93,19 +130,46 @@ export async function POST(request: NextRequest) {
           companyName: email.company.name,
           to: '(no email)',
           status: 'skipped',
-          error: 'No contact email for this company',
+          error: 'No contact email — try Find Email',
+        })
+        continue
+      }
+
+      // Skip if already sent to this email in any campaign
+      if (sentEmailSet.has(to.toLowerCase())) {
+        results.push({
+          emailId: email.id,
+          companyName: email.company.name,
+          to,
+          status: 'skipped',
+          error: 'Already emailed this address in a previous campaign',
+        })
+        continue
+      }
+
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(to)) {
+        results.push({
+          emailId: email.id,
+          companyName: email.company.name,
+          to,
+          status: 'skipped',
+          error: 'Invalid email format — try Find Email',
         })
         continue
       }
 
       try {
-        const gmailMessageId = await sendGmailEmail({
+        const { messageId: gmailMessageId, threadId: gmailThreadId } = await sendGmailEmail({
+          from: fromHeader,
           to,
           subject: email.subject,
           body: email.body,
           accessToken,
-          cvPdfBase64: profile?.cvPdfBase64 ?? undefined,
-          cvFileName,
+          cvPdfBase64: campaign.attachCv ? (profile?.cvPdfBase64 ?? undefined) : undefined,
+          cvFileName: campaign.attachCv ? cvFileName : undefined,
+          emailId: email.id,
         })
 
         await prisma.generatedEmail.update({
@@ -114,6 +178,7 @@ export async function POST(request: NextRequest) {
             status: 'SENT',
             sentAt: new Date(),
             gmailMessageId,
+            gmailThreadId,
           },
         })
 
@@ -142,6 +207,9 @@ export async function POST(request: NextRequest) {
     }
 
     const sentCount = results.filter((r) => r.status === 'sent').length
+
+    // Invalidate heat map cache since new emails were sent
+    if (sentCount > 0) invalidateAppliedCache(session.user.id)
 
     // Update campaign sent count
     await prisma.campaign.update({

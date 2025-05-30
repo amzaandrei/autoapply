@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
 import { TRPCError } from '@trpc/server'
+import { invalidateAppliedCache } from './regions'
 
 export const emailsRouter = router({
   list: protectedProcedure
@@ -33,6 +34,10 @@ export const emailsRouter = router({
       body: z.string().min(1),
     }))
     .mutation(async ({ ctx, input }) => {
+      const campaign = await prisma.campaign.findFirst({
+        where: { id: input.campaignId, userId: ctx.session.user.id },
+      })
+      if (!campaign) throw new TRPCError({ code: 'NOT_FOUND' })
       return prisma.generatedEmail.create({ data: input })
     }),
 
@@ -46,7 +51,17 @@ export const emailsRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input
-      return prisma.generatedEmail.update({ where: { id }, data })
+      const email = await prisma.generatedEmail.findUnique({
+        where: { id },
+        include: { campaign: { select: { userId: true } } },
+      })
+      if (!email || email.campaign.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'NOT_FOUND' })
+      }
+      const result = await prisma.generatedEmail.update({ where: { id }, data })
+      // If status transitions into or out of SENT/OPENED/REPLIED, invalidate heat cache
+      if (data.status) invalidateAppliedCache(ctx.session.user.id)
+      return result
     }),
 
   markSent: protectedProcedure
@@ -57,15 +72,31 @@ export const emailsRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input
-      return prisma.generatedEmail.update({
+      const email = await prisma.generatedEmail.findUnique({
+        where: { id },
+        include: { campaign: { select: { userId: true } } },
+      })
+      if (!email || email.campaign.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'NOT_FOUND' })
+      }
+      const result = await prisma.generatedEmail.update({
         where: { id },
         data: { ...data, status: 'SENT', sentAt: new Date() },
       })
+      invalidateAppliedCache(ctx.session.user.id)
+      return result
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const email = await prisma.generatedEmail.findUnique({
+        where: { id: input.id },
+        include: { campaign: { select: { userId: true } } },
+      })
+      if (!email || email.campaign.userId !== ctx.session.user.id) {
+        throw new TRPCError({ code: 'NOT_FOUND' })
+      }
       return prisma.generatedEmail.delete({ where: { id: input.id } })
     }),
 })

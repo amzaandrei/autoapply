@@ -34,7 +34,12 @@ export default function SignupPage() {
       return
     }
 
-    await signIn('credentials', { email, password, redirect: false })
+    const signInResult = await signIn('credentials', { email, password, redirect: false })
+    if (signInResult?.error) {
+      setError('Account created but sign-in failed. Please sign in manually.')
+      setLoading(false)
+      return
+    }
     router.push('/dashboard')
   }
 
@@ -71,6 +76,22 @@ export default function SignupPage() {
               {loading ? 'Creating account...' : 'Create account'}
             </Button>
           </form>
+          <div className="mt-4 space-y-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
+            >
+              Continue with Google
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => signIn('linkedin', { callbackUrl: '/dashboard' })}
+            >
+              Continue with LinkedIn
+            </Button>
+          </div>
         </CardContent>
         <CardFooter>
           <p className="text-sm text-muted-foreground">

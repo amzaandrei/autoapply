@@ -7,7 +7,16 @@ import { httpBatchLink } from '@trpc/client'
 import { trpc } from '@/lib/trpc'
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient())
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 30_000,        // Data stays fresh for 30s — no refetch on mount
+        gcTime: 5 * 60_000,       // Cache kept for 5 min after unmount
+        refetchOnWindowFocus: false,
+        retry: 1,
+      },
+    },
+  }))
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [

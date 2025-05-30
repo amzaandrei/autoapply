@@ -115,8 +115,10 @@ export async function PATCH(request: NextRequest) {
       name: true,
       email: true,
       image: true,
+      createdAt: true,
       profile: {
         select: {
+          id: true,
           cvUrl: true,
           cvText: true,
           cvPdfBase64: true,
@@ -130,6 +132,7 @@ export async function PATCH(request: NextRequest) {
           signatureName: true,
           signaturePhone: true,
           signatureAddress: true,
+          updatedAt: true,
         },
       },
     },

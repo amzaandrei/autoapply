@@ -5,41 +5,61 @@ import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
-  Upload,
   Building2,
   Sparkles,
-  CheckSquare,
-  Send,
   Plus,
   ArrowRight,
   MailCheck,
   FileText,
+  Eye,
+  MessageSquare,
 } from 'lucide-react'
 import CampaignList from '@/components/CampaignList'
+import { ContactedCompanies } from '@/components/ContactedCompanies'
+import { TemplatesSection } from '@/components/TemplatesSection'
 
 export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 
-  const [campaigns, profile] = await Promise.all([
+  const [campaigns, profile, emailStats, contactedCompanies] = await Promise.all([
     prisma.campaign.findMany({
       where: { userId: session.user.id },
       include: { _count: { select: { companies: true, emails: true } } },
       orderBy: { updatedAt: 'desc' },
-      take: 5,
     }),
     prisma.userProfile.findUnique({ where: { userId: session.user.id } }),
+    prisma.generatedEmail.groupBy({
+      by: ['status'],
+      where: { campaign: { userId: session.user.id } },
+      _count: true,
+    }),
+    prisma.generatedEmail.findMany({
+      where: {
+        campaign: { userId: session.user.id },
+        status: { in: ['SENT', 'OPENED', 'REPLIED', 'BOUNCED'] },
+      },
+      select: {
+        status: true,
+        sentAt: true,
+        openedAt: true,
+        repliedAt: true,
+        openCount: true,
+        company: { select: { name: true, contactEmail: true, industry: true } },
+        campaign: { select: { name: true } },
+      },
+      orderBy: { sentAt: 'desc' },
+    }),
   ])
 
   const totalSent = campaigns.reduce((sum, c) => sum + c.sentCount, 0)
-
-  const steps = [
-    { step: '1', label: 'Upload CV', href: '/upload', desc: 'Import your resume', icon: Upload, done: !!profile?.cvText },
-    { step: '2', label: 'Discover', href: '/discover', desc: 'Find target companies', icon: Building2, done: campaigns.some((c) => c._count.companies > 0) },
-    { step: '3', label: 'Generate', href: '/generate', desc: 'AI writes your emails', icon: Sparkles, done: campaigns.some((c) => c._count.emails > 0) },
-    { step: '4', label: 'Review', href: '/review', desc: 'Edit & approve', icon: CheckSquare, done: false },
-    { step: '5', label: 'Send', href: '/send', desc: 'Send via Gmail', icon: Send, done: totalSent > 0 },
-  ]
+  const statusCounts = Object.fromEntries(emailStats.map((s) => [s.status, s._count]))
+  const sentCount = (statusCounts.SENT ?? 0) + (statusCounts.OPENED ?? 0) + (statusCounts.REPLIED ?? 0)
+  const openedCount = (statusCounts.OPENED ?? 0) + (statusCounts.REPLIED ?? 0)
+  const repliedCount = statusCounts.REPLIED ?? 0
+  const openRate = sentCount > 0 ? Math.round((openedCount / sentCount) * 100) : 0
+  const replyRate = sentCount > 0 ? Math.round((repliedCount / sentCount) * 100) : 0
+  const latestCampaignId = campaigns[0]?.id
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,38 +81,60 @@ export default async function DashboardPage() {
 
         {/* Stats */}
         {totalSent > 0 && (
-          <div className="grid grid-cols-3 gap-4 mb-10">
+          <div className="grid grid-cols-5 gap-3 mb-10">
             <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <MailCheck className="h-8 w-8 text-primary" />
+              <CardContent className="pt-5 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <MailCheck className="h-6 w-6 text-primary shrink-0" />
                   <div>
-                    <p className="text-2xl font-bold">{totalSent}</p>
-                    <p className="text-sm text-muted-foreground">Applications sent</p>
+                    <p className="text-xl font-bold">{sentCount}</p>
+                    <p className="text-xs text-muted-foreground">Sent</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <Building2 className="h-8 w-8 text-primary" />
+              <CardContent className="pt-5 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <Eye className="h-6 w-6 text-blue-500 shrink-0" />
                   <div>
-                    <p className="text-2xl font-bold">
+                    <p className="text-xl font-bold">{openRate}%</p>
+                    <p className="text-xs text-muted-foreground">Open rate ({openedCount})</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-5 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <MessageSquare className="h-6 w-6 text-green-500 shrink-0" />
+                  <div>
+                    <p className="text-xl font-bold">{replyRate}%</p>
+                    <p className="text-xs text-muted-foreground">Reply rate ({repliedCount})</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-5 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <Building2 className="h-6 w-6 text-primary shrink-0" />
+                  <div>
+                    <p className="text-xl font-bold">
                       {campaigns.reduce((sum, c) => sum + c._count.companies, 0)}
                     </p>
-                    <p className="text-sm text-muted-foreground">Companies targeted</p>
+                    <p className="text-xs text-muted-foreground">Companies</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-8 w-8 text-primary" />
+              <CardContent className="pt-5 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <FileText className="h-6 w-6 text-primary shrink-0" />
                   <div>
-                    <p className="text-2xl font-bold">{campaigns.length}</p>
-                    <p className="text-sm text-muted-foreground">Active campaigns</p>
+                    <p className="text-xl font-bold">{campaigns.length}</p>
+                    <p className="text-xs text-muted-foreground">Campaigns</p>
                   </div>
                 </div>
               </CardContent>
@@ -100,48 +142,89 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* 5-step pipeline */}
-        <div className="grid grid-cols-5 gap-3 mb-10">
-          {steps.map((s) => {
-            const Icon = s.icon
-            return (
-              <Link key={s.step} href={s.href}>
-                <Card className="hover:border-primary transition-colors cursor-pointer h-full group">
-                  <CardHeader className="pb-2">
-                    <CardDescription className="flex items-center gap-1">
-                      Step {s.step}
-                      {s.done && <span className="text-green-500 text-xs">✓</span>}
-                    </CardDescription>
-                    <CardTitle className="text-base flex items-center gap-1.5">
-                      <Icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                      {s.label}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground">{s.desc}</p>
-                  </CardContent>
-                </Card>
-              </Link>
-            )
-          })}
-        </div>
+        {/* Coverage CTA */}
+        {totalSent > 0 && (
+          <Link href="/coverage" className="block mb-6">
+            <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+              <CardContent className="py-4 flex items-center gap-4">
+                <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-red-500/20 to-emerald-500/20 flex items-center justify-center">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-sm">Coverage Map</p>
+                  <p className="text-xs text-muted-foreground">See where you've applied and which tech hubs you're missing</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </Link>
+        )}
+
+        {/* Templates */}
+        <TemplatesSection />
+
+        {/* Contacted companies */}
+        {contactedCompanies.length > 0 && (
+          <div className="mb-8">
+            <ContactedCompanies companies={contactedCompanies.map(c => ({
+              ...c,
+              sentAt: c.sentAt?.toISOString() ?? null,
+              openedAt: c.openedAt?.toISOString() ?? null,
+              repliedAt: c.repliedAt?.toISOString() ?? null,
+            }))} />
+          </div>
+        )}
 
         {/* Recent campaigns */}
         {campaigns.length > 0 ? (
           <CampaignList campaigns={campaigns} />
         ) : (
           <Card>
-            <CardContent className="py-16 text-center">
-              <Sparkles className="h-12 w-12 mx-auto mb-4 text-primary opacity-50" />
-              <h3 className="text-lg font-semibold">No campaigns yet.</h3>
-              <p className="text-muted-foreground text-sm mt-2 max-w-md mx-auto">
-                Start by uploading your CV.
-              </p>
-              <Link href="/upload" className="inline-block mt-6">
-                <Button size="lg">
-                  Upload CV <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              </Link>
+            <CardContent className="py-12">
+              <div className="max-w-2xl mx-auto text-center">
+                <Sparkles className="h-10 w-10 mx-auto mb-3 text-primary" />
+                <h3 className="text-xl font-semibold">Welcome to AutoApply</h3>
+                <p className="text-muted-foreground text-sm mt-2">
+                  Let&apos;s land you interviews. Here&apos;s how it works:
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8 max-w-3xl mx-auto">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">1</div>
+                    <p className="font-medium text-sm">Upload your CV</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-8">AI reads your experience and skills.</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">2</div>
+                    <p className="font-medium text-sm">Discover companies</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-8">We find real live job postings for you.</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">3</div>
+                    <p className="font-medium text-sm">Send applications</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-8">Personalized emails, tracked replies.</p>
+                </div>
+              </div>
+              <div className="flex justify-center gap-3 mt-8">
+                <Link href="/upload">
+                  <Button size="lg">
+                    {profile?.cvText ? 'Start Your First Campaign' : 'Upload CV'} <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </Link>
+                {profile?.cvText && (
+                  <Link href="/discover">
+                    <Button size="lg" variant="outline">
+                      Skip to Discover
+                    </Button>
+                  </Link>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}

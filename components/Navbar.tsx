@@ -1,7 +1,14 @@
 'use client'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Settings, LogOut, ChevronDown, Flame } from 'lucide-react'
 
 export function Navbar() {
   const { data: session } = useSession()
@@ -10,14 +17,32 @@ export function Navbar() {
     <header className="border-b border-border bg-background/95 backdrop-blur sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
         <Link href="/dashboard" className="font-semibold text-lg">AutoApply</Link>
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Dashboard</Link>
-          <Link href="/profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex items-center gap-2 hover:opacity-80 transition-opacity outline-none">
             {session.user.image && <img src={session.user.image} className="w-7 h-7 rounded-full" alt="" />}
             <span className="text-sm text-muted-foreground">{session.user.name ?? session.user.email}</span>
-          </Link>
-          <Button variant="ghost" size="sm" onClick={() => signOut({ callbackUrl: '/login' })}>Sign out</Button>
-        </div>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem asChild>
+              <Link href="/coverage" className="cursor-pointer">
+                <Flame className="h-4 w-4 mr-2" /> Coverage
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/profile" className="cursor-pointer">
+                <Settings className="h-4 w-4 mr-2" /> Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer text-destructive focus:text-destructive"
+              onClick={() => signOut({ callbackUrl: '/login' })}
+            >
+              <LogOut className="h-4 w-4 mr-2" /> Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   )

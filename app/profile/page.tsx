@@ -72,7 +72,7 @@ export default function ProfilePage() {
         setSkillsInput((d.profile?.skills ?? []).join(', '))
         setEmailTemplate(d.profile?.emailTemplate ?? '')
         setUseEmailTemplate(d.profile?.useEmailTemplate ?? false)
-        setSignatureName(d.profile?.signatureName ?? '')
+        setSignatureName(d.profile?.signatureName || d.name || '')
         setSignaturePhone(d.profile?.signaturePhone ?? '')
         setSignatureAddress(d.profile?.signatureAddress ?? '')
       })
@@ -95,7 +95,12 @@ export default function ProfilePage() {
       let cvPdfBase64: string | undefined
       if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
         const arrayBuffer = await file.arrayBuffer()
-        cvPdfBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+        const bytes = new Uint8Array(arrayBuffer)
+        let binary = ''
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i])
+        }
+        cvPdfBase64 = btoa(binary)
       }
       const formData = new FormData()
       formData.append('file', file)

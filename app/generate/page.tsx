@@ -10,6 +10,8 @@ import { Progress } from '@/components/ui/progress'
 import { toast } from 'sonner'
 import { Sparkles, Loader2, CheckCircle, XCircle, ArrowRight, Building2 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
+import { PageTransition } from '@/components/Motion'
+import { friendlyError } from '@/lib/error-messages'
 
 interface GenerateResult {
   companyId: string
@@ -28,9 +30,11 @@ function GeneratePage() {
   const [done, setDone] = useState(false)
 
   const companies = trpc.companies.list.useQuery({ campaignId }, { enabled: !!campaignId })
+  const campaign = trpc.campaigns.getById.useQuery({ id: campaignId }, { enabled: !!campaignId })
   const profile = trpc.profile.get.useQuery()
 
   const total = companies.data?.length ?? 0
+  const isTemplateMode = campaign.data?.useEmailTemplate ?? false
 
   const handleGenerate = async () => {
     if (!campaignId) return
@@ -72,7 +76,9 @@ function GeneratePage() {
         toast.error('Generation failed for all companies.')
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Generation failed')
+      const msg = err instanceof Error ? err.message : 'Generation failed'
+      const f = friendlyError(msg)
+      toast.error(f.title, { description: f.description })
     } finally {
       setGenerating(false)
     }
@@ -80,8 +86,9 @@ function GeneratePage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageTransition>
       <div className="max-w-4xl mx-auto px-4 py-12">
-        <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push('/discover')}>← Back to Jobs</Button>
+        <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push(`/discover?campaignId=${campaignId}`)}>← Back to Discover</Button>
         <StepIndicator currentStep={3} campaignId={campaignId} />
 
         <Card>
@@ -91,7 +98,7 @@ function GeneratePage() {
               Generate Personalized Emails
             </CardTitle>
             <CardDescription>
-              {profile.data?.useEmailTemplate && profile.data?.emailTemplate
+              {isTemplateMode
                 ? 'Your custom email template will be used for each company.'
                 : 'Claude AI writes a tailored application email for each company using your CV and company context.'}
             </CardDescription>
@@ -114,7 +121,7 @@ function GeneratePage() {
             {generating && (
               <div className="space-y-2">
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>{profile.data?.useEmailTemplate && profile.data?.emailTemplate ? 'Filling template...' : 'Generating with Claude AI...'}</span>
+                  <span>{isTemplateMode ? 'Filling template...' : 'Generating with Claude AI...'}</span>
                   <span>{total} {total === 1 ? 'company' : 'companies'}</span>
                 </div>
                 <Progress value={undefined} className="animate-pulse" />
@@ -137,7 +144,7 @@ function GeneratePage() {
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4 mr-2" />
-                    {profile.data?.useEmailTemplate && profile.data?.emailTemplate ? 'Fill Template for All Companies' : 'Generate All Emails'}
+                    {isTemplateMode ? 'Fill Template for All Companies' : 'Generate All Emails'}
                   </>
                 )}
               </Button>
@@ -190,6 +197,7 @@ function GeneratePage() {
         </Card>
 
       </div>
+      </PageTransition>
     </div>
   )
 }
