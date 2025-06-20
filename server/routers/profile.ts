@@ -19,6 +19,11 @@ export const profileRouter = router({
       bio: z.string().optional(),
       linkedIn: z.string().optional(),
       portfolio: z.string().optional(),
+      emailTemplate: z.string().optional(),
+      useEmailTemplate: z.boolean().optional(),
+      signatureName: z.string().optional(),
+      signaturePhone: z.string().optional(),
+      signatureAddress: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       return prisma.userProfile.upsert({

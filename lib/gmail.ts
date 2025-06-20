@@ -19,7 +19,10 @@ export function getOAuth2Client(): OAuth2Client {
 export function getGmailAuthUrl(oauth2Client: OAuth2Client, campaignId?: string): string {
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/gmail.send'],
+    scope: [
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.readonly',
+    ],
     prompt: 'consent',
     ...(campaignId ? { state: campaignId } : {}),
   })
@@ -55,12 +58,26 @@ export async function refreshAccessToken(refreshToken: string): Promise<GmailTok
 }
 
 export interface SendEmailParams {
+  from?: string
   to: string
   subject: string
   body: string
   accessToken: string
   cvPdfBase64?: string
   cvFileName?: string
+  emailId?: string
+  threadId?: string
+  inReplyTo?: string
+  references?: string
+}
+
+function injectTrackingPixel(html: string, emailId?: string): string {
+  if (!emailId) return html
+  const baseUrl = process.env.NEXTAUTH_URL ?? ''
+  // Only inject pixel for public URLs — localhost tracking triggers spam filters
+  if (!baseUrl || baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) return html
+  const pixel = `<img src="${baseUrl}/api/track/open?id=${emailId}" width="1" height="1" style="display:none" alt="" />`
+  return html + pixel
 }
 
 function toBase64Url(str: string): string {
@@ -71,59 +88,86 @@ function toBase64Url(str: string): string {
     .replace(/=+$/, '')
 }
 
-function buildRawEmail(params: SendEmailParams): string {
-  const { to, subject, body, cvPdfBase64, cvFileName } = params
+function chunk76(base64: string): string {
+  return base64.match(/.{1,76}/g)?.join('\r\n') ?? base64
+}
 
-  if (!cvPdfBase64) {
-    // HTML email without attachment — convert plain text to HTML then base64 encode
-    const htmlContent = toHtml(body)
-    const htmlBase64 = Buffer.from(htmlContent).toString('base64').match(/.{1,76}/g)?.join('\r\n') ?? Buffer.from(htmlContent).toString('base64')
-    const messageParts = [
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/html; charset=UTF-8',
-      'Content-Transfer-Encoding: base64',
-      '',
-      htmlBase64,
-    ]
-    return toBase64Url(messageParts.join('\r\n'))
-  }
-
-  // Multipart MIME email with PDF attachment
-  const boundary = `AutoApply_boundary_${Date.now()}`
-  const fileName = cvFileName ?? 'CV.pdf'
-
-  const bodyBase64 = Buffer.from(toHtml(body)).toString('base64')
-  // chunk the base64 attachment into 76-char lines (RFC 2045)
-  const pdfChunked = cvPdfBase64.match(/.{1,76}/g)?.join('\r\n') ?? cvPdfBase64
-
-  const raw = [
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    'MIME-Version: 1.0',
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+function buildAlternativeBody(plainText: string, html: string): string {
+  const altBoundary = `alt_${Date.now()}`
+  return [
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
     '',
-    `--${boundary}`,
+    `--${altBoundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    chunk76(Buffer.from(plainText).toString('base64')),
+    '',
+    `--${altBoundary}`,
     'Content-Type: text/html; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
     '',
-    bodyBase64,
+    chunk76(Buffer.from(html).toString('base64')),
     '',
-    `--${boundary}`,
+    `--${altBoundary}--`,
+  ].join('\r\n')
+}
+
+function buildRawEmail(params: SendEmailParams): string {
+  const { from, to, subject, body, cvPdfBase64, cvFileName, emailId, inReplyTo, references } = params
+
+  const messageId = `<${Date.now()}.${Math.random().toString(36).slice(2)}@autoapply>`
+
+  // Standard headers — From, Date, Message-ID are critical for deliverability
+  const headers = [
+    ...(from ? [`From: ${from}`] : []),
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    `Date: ${new Date().toUTCString()}`,
+    `Message-ID: ${messageId}`,
+    'MIME-Version: 1.0',
+  ]
+  if (inReplyTo) headers.push(`In-Reply-To: <${inReplyTo}>`)
+  if (references) headers.push(`References: <${references}>`)
+
+  const htmlContent = injectTrackingPixel(toHtml(body), emailId)
+  const plainText = body
+
+  if (!cvPdfBase64) {
+    // multipart/alternative: text/plain + text/html
+    const raw = [
+      ...headers,
+      buildAlternativeBody(plainText, htmlContent),
+    ].join('\r\n')
+    return toBase64Url(raw)
+  }
+
+  // multipart/mixed: (multipart/alternative body) + PDF attachment
+  const mixedBoundary = `mixed_${Date.now()}`
+  const fileName = cvFileName ?? 'CV.pdf'
+  const pdfChunked = chunk76(cvPdfBase64)
+
+  const raw = [
+    ...headers,
+    `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
+    '',
+    `--${mixedBoundary}`,
+    buildAlternativeBody(plainText, htmlContent),
+    '',
+    `--${mixedBoundary}`,
     `Content-Type: application/pdf; name="${fileName}"`,
     'Content-Transfer-Encoding: base64',
     `Content-Disposition: attachment; filename="${fileName}"`,
     '',
     pdfChunked,
     '',
-    `--${boundary}--`,
+    `--${mixedBoundary}--`,
   ].join('\r\n')
 
   return toBase64Url(raw)
 }
 
-export async function sendGmailEmail(params: SendEmailParams): Promise<string> {
+export async function sendGmailEmail(params: SendEmailParams): Promise<{ messageId: string; threadId: string }> {
   const oauth2Client = getOAuth2Client()
   oauth2Client.setCredentials({ access_token: params.accessToken })
 
@@ -133,10 +177,75 @@ export async function sendGmailEmail(params: SendEmailParams): Promise<string> {
 
   const result = await gmail.users.messages.send({
     userId: 'me',
-    requestBody: { raw },
+    requestBody: { raw, threadId: params.threadId },
   })
 
-  return result.data.id ?? ''
+  return {
+    messageId: result.data.id ?? '',
+    threadId: result.data.threadId ?? '',
+  }
+}
+
+export async function getThreadMessages(accessToken: string, threadId: string) {
+  const oauth2Client = getOAuth2Client()
+  oauth2Client.setCredentials({ access_token: accessToken })
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
+  const thread = await gmail.users.threads.get({ userId: 'me', id: threadId, format: 'full' })
+  return thread.data.messages ?? []
+}
+
+export interface ThreadMessage {
+  id: string
+  from: string
+  to: string
+  subject: string
+  date: string
+  bodyHtml: string | null
+  bodyText: string | null
+  messageId: string | null
+  isFromUser: boolean
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findBodyPart(payload: any, mimeType: string): string | null {
+  if (!payload) return null
+  if (payload.mimeType === mimeType && payload.body?.data) {
+    return Buffer.from(payload.body.data, 'base64url').toString('utf-8')
+  }
+  if (payload.parts) {
+    for (const part of payload.parts) {
+      const found = findBodyPart(part, mimeType)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getHeader(headers: any[], name: string): string {
+  return headers?.find((h: { name?: string }) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? ''
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function parseThreadMessages(messages: any[], userEmail: string): ThreadMessage[] {
+  return messages.map((msg) => {
+    const headers = msg.payload?.headers ?? []
+    const from = getHeader(headers, 'From')
+    const bodyHtml = findBodyPart(msg.payload, 'text/html')
+    const bodyText = findBodyPart(msg.payload, 'text/plain')
+
+    return {
+      id: msg.id ?? '',
+      from,
+      to: getHeader(headers, 'To'),
+      subject: getHeader(headers, 'Subject'),
+      date: getHeader(headers, 'Date'),
+      bodyHtml,
+      bodyText,
+      messageId: getHeader(headers, 'Message-ID') || getHeader(headers, 'Message-Id'),
+      isFromUser: from.toLowerCase().includes(userEmail.toLowerCase()),
+    }
+  })
 }
 
 export async function getValidAccessToken(stored: {

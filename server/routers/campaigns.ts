@@ -33,6 +33,14 @@ export const campaignsRouter = router({
       name: z.string().min(1),
       description: z.string().optional(),
       jobTitle: z.string().optional(),
+      useEmailTemplate: z.boolean().optional(),
+      followUpEnabled: z.boolean().optional(),
+      followUpDelayDays: z.number().int().min(1).max(30).optional(),
+      maxFollowUps: z.number().int().min(1).max(3).optional(),
+      abTestEnabled: z.boolean().optional(),
+      abToneA: z.enum(['concise', 'balanced', 'detailed']).optional(),
+      abToneB: z.enum(['concise', 'balanced', 'detailed']).optional(),
+      attachCv: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       return prisma.campaign.create({
@@ -46,6 +54,14 @@ export const campaignsRouter = router({
       name: z.string().min(1).optional(),
       description: z.string().optional(),
       jobTitle: z.string().optional(),
+      useEmailTemplate: z.boolean().optional(),
+      followUpEnabled: z.boolean().optional(),
+      followUpDelayDays: z.number().int().min(1).max(30).optional(),
+      maxFollowUps: z.number().int().min(1).max(3).optional(),
+      abTestEnabled: z.boolean().optional(),
+      abToneA: z.enum(['concise', 'balanced', 'detailed']).optional(),
+      abToneB: z.enum(['concise', 'balanced', 'detailed']).optional(),
+      attachCv: z.boolean().optional(),
       status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED']).optional(),
     }))
     .mutation(async ({ ctx, input }) => {

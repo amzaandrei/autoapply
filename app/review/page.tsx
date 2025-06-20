@@ -9,6 +9,14 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import {
   CheckCircle,
@@ -20,8 +28,21 @@ import {
   Mail,
   Loader2,
   RefreshCw,
+  Zap,
+  Minus,
+  FileText,
+  Eye,
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
+import { PageTransition, StaggerItem } from '@/components/Motion'
+
+type EmailTone = 'concise' | 'balanced' | 'detailed'
+
+const TONE_OPTIONS: { value: EmailTone; label: string; desc: string; icon: typeof Zap }[] = [
+  { value: 'concise',  label: 'Short & Direct',   desc: '~80 words, straight to the point', icon: Zap },
+  { value: 'balanced', label: 'Balanced',          desc: '~150-200 words, professional',     icon: Minus },
+  { value: 'detailed', label: 'In-Depth',          desc: '~250-300 words, thorough',         icon: FileText },
+]
 
 function ReviewPage() {
   const router = useRouter()
@@ -32,8 +53,17 @@ function ReviewPage() {
   const [editSubject, setEditSubject] = useState('')
   const [editBody, setEditBody] = useState('')
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
+  const [previewId, setPreviewId] = useState<string | null>(null)
+
+  function toHtml(text: string): string {
+    return text
+      .split(/\n\n+/)
+      .map(para => `<p style="margin:0 0 14px 0;line-height:1.6;font-family:Arial,sans-serif;font-size:14px;color:#333;">${para.replace(/\n/g, '<br>')}</p>`)
+      .join('')
+  }
 
   const emails = trpc.emails.list.useQuery({ campaignId }, { enabled: !!campaignId })
+  const campaign = trpc.campaigns.getById.useQuery({ id: campaignId }, { enabled: !!campaignId })
 
   const updateEmail = trpc.emails.update.useMutation({
     onSuccess: () => {
@@ -45,12 +75,34 @@ function ReviewPage() {
   })
 
   const deleteEmail = trpc.emails.delete.useMutation({
-    onSuccess: () => {
-      emails.refetch()
-      toast.success('Removed')
-    },
+    onSuccess: () => emails.refetch(),
     onError: (e) => toast.error(e.message),
   })
+  const [pendingDelete, setPendingDelete] = useState<Set<string>>(new Set())
+
+  const handleDeleteEmail = (id: string, companyName: string) => {
+    // Optimistic hide
+    setPendingDelete((prev) => new Set(prev).add(id))
+
+    let cancelled = false
+    const timer = setTimeout(() => {
+      if (cancelled) return
+      deleteEmail.mutate({ id })
+    }, 5000)
+
+    toast(`Email for ${companyName} deleted`, {
+      duration: 5000,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          cancelled = true
+          clearTimeout(timer)
+          setPendingDelete((prev) => { const n = new Set(prev); n.delete(id); return n })
+          toast.success('Restored')
+        },
+      },
+    })
+  }
 
   const approveEmail = (id: string) => {
     updateEmail.mutate({ id, status: 'READY' })
@@ -62,12 +114,33 @@ function ReviewPage() {
       toast.info('All emails already approved')
       return
     }
+
+    // For A/B groups, pick one random variant per group
+    const abGroups = new Map<string, typeof drafts>()
+    const nonAbDrafts: typeof drafts = []
+    for (const d of drafts) {
+      if (d.abGroup) {
+        const group = abGroups.get(d.abGroup) ?? []
+        group.push(d)
+        abGroups.set(d.abGroup, group)
+      } else {
+        nonAbDrafts.push(d)
+      }
+    }
+
+    const toApprove = [...nonAbDrafts]
+    for (const group of abGroups.values()) {
+      // Pick random variant from each group
+      const pick = group[Math.floor(Math.random() * group.length)]
+      toApprove.push(pick)
+    }
+
     Promise.all(
-      drafts.map((e) =>
+      toApprove.map((e) =>
         updateEmail.mutateAsync({ id: e.id, status: 'READY' })
       )
     ).then(() => {
-      toast.success(`${drafts.length} emails approved — ready to send.`)
+      toast.success(`${toApprove.length} emails approved — ready to send.`)
     }).catch(() => toast.error('Some approvals failed'))
   }
 
@@ -82,13 +155,13 @@ function ReviewPage() {
     updateEmail.mutate({ id: editingId, subject: editSubject, body: editBody })
   }
 
-  const regenerateEmail = async (emailId: string, companyId: string) => {
+  const regenerateEmail = async (emailId: string, companyId: string, tone: EmailTone) => {
     setRegeneratingId(emailId)
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId, companyId }),
+        body: JSON.stringify({ campaignId, companyId, tone }),
       })
       const data = await res.json() as { error?: string }
       if (!res.ok) throw new Error(data.error ?? 'Regeneration failed')
@@ -101,13 +174,27 @@ function ReviewPage() {
     }
   }
 
-  const totalEmails = emails.data?.length ?? 0
-  const readyCount = emails.data?.filter((e) => e.status === 'READY').length ?? 0
+  const hasAbTest = campaign.data?.abTestEnabled ?? false
+  // For display counts, exclude the "other" A/B variant (unpicked drafts in a group where one is already READY)
+  const pickedAbGroups = new Set(
+    emails.data?.filter((e) => e.status === 'READY' && e.abGroup).map((e) => e.abGroup) ?? []
+  )
+  const visibleEmails = emails.data?.filter((e) => {
+    // Hide emails pending deletion (undo window)
+    if (pendingDelete.has(e.id)) return false
+    // Hide the unpicked variant if the other in the group is already READY
+    if (e.abGroup && e.status === 'DRAFT' && pickedAbGroups.has(e.abGroup)) return false
+    return true
+  }) ?? []
+  const totalEmails = visibleEmails.length
+  const readyCount = visibleEmails.filter((e) => e.status === 'READY').length
+  const draftCount = visibleEmails.filter((e) => e.status === 'DRAFT').length
 
   return (
     <div className="min-h-screen bg-background">
+      <PageTransition>
       <div className="max-w-4xl mx-auto px-4 py-12">
-        <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push(`/generate?campaignId=${campaignId}`)}>← Back to Generate</Button>
+        <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push(`/discover?campaignId=${campaignId}`)}>← Back to Discover</Button>
         <StepIndicator currentStep={4} campaignId={campaignId} />
 
         {/* Header */}
@@ -118,6 +205,11 @@ function ReviewPage() {
               {readyCount} of {totalEmails} approved
               {totalEmails > 0 && readyCount < totalEmails && ' — approve emails to send them'}
             </p>
+            {hasAbTest && draftCount > 0 && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                A/B testing is on — Approve All will randomly pick one variant per company. Only the picked version gets sent.
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={approveAll} disabled={updateEmail.isPending}>
@@ -135,7 +227,8 @@ function ReviewPage() {
 
         {/* Email cards */}
         <div className="space-y-4">
-          {emails.data?.map((email) => (
+          {visibleEmails.map((email, idx) => (
+            <StaggerItem key={email.id} index={idx}>
             <Card
               key={email.id}
               className={`transition-colors ${
@@ -166,6 +259,11 @@ function ReviewPage() {
                       >
                         {email.status.toLowerCase()}
                       </Badge>
+                      {email.variant && (
+                        <Badge variant="outline" className="text-[10px] shrink-0">
+                          Variant {email.variant}
+                        </Badge>
+                      )}
                     </div>
                     {email.company.contactEmail && (
                       <p className="text-xs text-muted-foreground ml-6 mt-0.5">
@@ -187,19 +285,50 @@ function ReviewPage() {
                             <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
                           </Button>
                         )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              title="Regenerate"
+                              disabled={regeneratingId === email.id}
+                            >
+                              {regeneratingId === email.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuLabel>Regenerate with tone</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {TONE_OPTIONS.map((opt) => {
+                              const Icon = opt.icon
+                              return (
+                                <DropdownMenuItem
+                                  key={opt.value}
+                                  onClick={() => void regenerateEmail(email.id, email.company.id, opt.value)}
+                                >
+                                  <Icon className="h-4 w-4 mr-2 shrink-0" />
+                                  <div>
+                                    <p className="font-medium text-sm">{opt.label}</p>
+                                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                                  </div>
+                                </DropdownMenuItem>
+                              )
+                            })}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                          title="Regenerate"
-                          onClick={() => void regenerateEmail(email.id, email.company.id)}
-                          disabled={regeneratingId === email.id}
+                          className={`h-8 w-8 ${previewId === email.id ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                          title="Preview as HTML"
+                          onClick={() => setPreviewId(previewId === email.id ? null : email.id)}
                         >
-                          {regeneratingId === email.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <RefreshCw className="h-3.5 w-3.5" />
-                          )}
+                          <Eye className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           size="icon"
@@ -213,7 +342,7 @@ function ReviewPage() {
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => deleteEmail.mutate({ id: email.id })}
+                          onClick={() => handleDeleteEmail(email.id, email.company.name)}
                           disabled={deleteEmail.isPending}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -246,14 +375,21 @@ function ReviewPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Body
-                      </label>
-                      <Textarea
-                        className="min-h-[220px]"
-                        value={editBody}
-                        onChange={(e) => setEditBody(e.target.value)}
-                      />
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                          Body — edit on left, preview on right
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <Textarea
+                          className="min-h-[320px] font-mono text-xs"
+                          value={editBody}
+                          onChange={(e) => setEditBody(e.target.value)}
+                        />
+                        <div className="min-h-[320px] rounded-md border bg-white p-4 overflow-y-auto">
+                          <div dangerouslySetInnerHTML={{ __html: toHtml(editBody) }} />
+                        </div>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <Button
@@ -276,6 +412,20 @@ function ReviewPage() {
                       </Button>
                     </div>
                   </div>
+                ) : previewId === email.id ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">HTML Preview</p>
+                      <Badge variant="outline" className="text-[10px]">As recipient sees it</Badge>
+                    </div>
+                    <div className="rounded-md border bg-white p-4">
+                      <p style={{ margin: '0 0 8px 0', fontFamily: 'Arial, sans-serif', fontSize: '14px', fontWeight: 600, color: '#333' }}>
+                        {email.subject}
+                      </p>
+                      <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '8px 0 14px' }} />
+                      <div dangerouslySetInnerHTML={{ __html: toHtml(email.body) }} />
+                    </div>
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-muted-foreground">
@@ -285,11 +435,26 @@ function ReviewPage() {
                     <p className="text-sm whitespace-pre-wrap leading-relaxed">{email.body}</p>
                   </div>
                 )}
+                {/* Notes */}
+                <div className="mt-3 pt-3 border-t">
+                  <Textarea
+                    placeholder="Add notes about this company..."
+                    className="min-h-[60px] text-xs resize-none"
+                    defaultValue={email.notes ?? ''}
+                    onBlur={(e) => {
+                      const val = e.target.value
+                      if (val !== (email.notes ?? '')) {
+                        updateEmail.mutate({ id: email.id, notes: val })
+                      }
+                    }}
+                  />
+                </div>
               </CardContent>
             </Card>
+            </StaggerItem>
           ))}
 
-          {emails.data?.length === 0 && (
+          {visibleEmails.length === 0 && (
             <div className="text-center py-16 text-muted-foreground">
               <Mail className="h-10 w-10 mx-auto mb-3 opacity-20" />
               <p className="font-medium">No emails generated yet. Go back to Generate to create your emails.</p>
@@ -298,6 +463,7 @@ function ReviewPage() {
         </div>
 
       </div>
+      </PageTransition>
     </div>
   )
 }

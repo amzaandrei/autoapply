@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         expiresAt: tokens.expiresAt,
-        scope: 'https://www.googleapis.com/auth/gmail.send',
+        scope: 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly',
       },
       update: {
         accessToken: tokens.accessToken,

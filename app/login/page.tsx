@@ -62,13 +62,20 @@ export default function LoginPage() {
               {loading ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
-          <div className="mt-4">
+          <div className="mt-4 space-y-2">
             <Button
               variant="outline"
               className="w-full"
               onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
             >
               Continue with Google
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => signIn('linkedin', { callbackUrl: '/dashboard' })}
+            >
+              Continue with LinkedIn
             </Button>
           </div>
         </CardContent>
