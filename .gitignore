@@ -24,7 +24,14 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
-.env*.local
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+# but commit the template
+!.env.production.example
+!.env.example
 
 # vercel
 .vercel

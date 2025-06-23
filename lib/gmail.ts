@@ -2,7 +2,14 @@ import { google } from 'googleapis'
 import type { OAuth2Client } from 'google-auth-library'
 
 function toHtml(text: string): string {
-  return text
+  // HTML-escape before wrapping to avoid injection via email body.
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+  return escaped
     .split(/\n\n+/)
     .map(para => `<p style="margin:0 0 14px 0;line-height:1.6;">${para.replace(/\n/g, '<br>')}</p>`)
     .join('')

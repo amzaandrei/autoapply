@@ -19,13 +19,63 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts    Account[]
-  sessions    Session[]
-  profile     UserProfile?
-  campaigns   Campaign[]
-  gmailToken  GmailToken?
-  blacklist   BlacklistedCompany[]
-  templates   CampaignTemplate[]
+  accounts     Account[]
+  sessions     Session[]
+  profile      UserProfile?
+  campaigns    Campaign[]
+  gmailToken   GmailToken?
+  blacklist    BlacklistedCompany[]
+  templates    CampaignTemplate[]
+  subscription Subscription?
+}
+
+// ─── Billing ────────────────────────────────────────────────────────────────
+
+enum SubscriptionTier {
+  FREE
+  PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier                 SubscriptionTier   @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+}
+
+model UsageCounter {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   // "email_sent" | "ai_generation" | "discovery" | "follow_up"
+  period    String   // "YYYY-MM" or "YYYY-MM-DD-HH" for hourly actions
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, action, period])
+  @@index([userId, period])
+}
+
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
 }
 
 model Account {

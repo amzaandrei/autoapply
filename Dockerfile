@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1.7
+# -------- Stage 1: deps --------
+FROM node:22-alpine AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
+
+# -------- Stage 2: builder --------
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Client-side env must be present at build time (NEXT_PUBLIC_*).
+ARG NEXT_PUBLIC_MAPBOX_TOKEN
+ARG NEXT_PUBLIC_SENTRY_DSN
+ARG NEXT_PUBLIC_POSTHOG_KEY
+ARG NEXT_PUBLIC_POSTHOG_HOST
+ARG NEXT_PUBLIC_APP_URL
+ARG GIT_SHA
+ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN \
+    NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN \
+    NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY \
+    NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST \
+    NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
+    GIT_SHA=$GIT_SHA
+
+# Dummy env to satisfy validation during build (runtime uses real values).
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build" \
+    AUTH_SECRET="build-only-placeholder-not-for-runtime-use-1234" \
+    NEXT_TELEMETRY_DISABLED=1
+
+RUN corepack enable && pnpm build
+RUN pnpm exec tsc --skipLibCheck --module commonjs --target es2020 --moduleResolution node \
+    --esModuleInterop true --outDir dist scripts/worker.ts || true
+
+# -------- Stage 3: runner --------
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production PORT=3002 HOSTNAME=0.0.0.0
+RUN apk add --no-cache wget && \
+    addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+
+# Next.js standalone build
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+# Worker build output (may not exist in pure app image; tolerated)
+COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist
+# Worker relies on full node_modules for prisma, bullmq, etc
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./worker_modules
+COPY --chown=nextjs:nodejs docker/entrypoint.sh ./entrypoint.sh
+
+RUN chmod +x ./entrypoint.sh
+
+USER nextjs
+EXPOSE 3002
+CMD ["./entrypoint.sh"]

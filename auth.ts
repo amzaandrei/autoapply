@@ -67,12 +67,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) token.id = user.id
+      // Refresh tier on sign-in or when client calls update()
+      if (token.id && (user || trigger === 'update')) {
+        const sub = await prisma.subscription.findUnique({
+          where: { userId: token.id as string },
+          select: { tier: true, status: true },
+        })
+        const active = sub && (sub.status === 'ACTIVE' || sub.status === 'TRIALING')
+        token.tier = active && sub?.tier === 'PRO' ? 'PRO' : 'FREE'
+      }
       return token
     },
     async session({ session, token }) {
       if (token.id) session.user.id = token.id as string
+      session.user.tier = (token.tier as 'FREE' | 'PRO') ?? 'FREE'
       return session
     },
   },

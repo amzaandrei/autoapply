@@ -8,6 +8,8 @@ import { estimateSalary } from '@/lib/salary-estimator'
 import { rateLimit } from '@/lib/rate-limit'
 import { geocodeForwardBatch } from '@/lib/geocode-cache'
 import { addOpportunityLocations, invalidateAppliedCache } from '@/server/routers/regions'
+import { checkQuota, incrementUsage } from '@/lib/entitlements'
+import { track } from '@/lib/analytics'
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -43,6 +45,17 @@ export async function POST(request: NextRequest) {
         error: `Too many searches. Try again in ${Math.ceil(limit.resetIn / 60)} minutes.`,
       }, { status: 429 })
     }
+
+    // Plan quota
+    const quota = await checkQuota(session.user.id, 'discovery')
+    if (!quota.allowed) {
+      return NextResponse.json({
+        error: `Hourly discovery limit reached (${quota.limit}/hr on ${quota.tier}).`,
+        upgrade: quota.tier === 'FREE',
+        tier: quota.tier,
+      }, { status: 402 })
+    }
+    await incrementUsage(session.user.id, 'discovery')
 
     // Verify campaign
     const campaign = await prisma.campaign.findFirst({
@@ -173,6 +186,11 @@ export async function POST(request: NextRequest) {
     }
     if (allLocations.length > 0) addOpportunityLocations(session.user.id, allLocations)
 
+    track(session.user.id, 'companies_discovered', {
+      count: taggedCompanies.length,
+      saved: saveResults ? toSave.length : 0,
+      source,
+    })
     return NextResponse.json({ companies: taggedCompanies, saved: saveResults ? toSave.length : 0 })
   } catch (err) {
     console.error('Discover error:', err)

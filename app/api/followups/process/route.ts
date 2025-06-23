@@ -3,11 +3,23 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { generateFollowUp } from '@/lib/ai'
 import { sendGmailEmail, refreshAccessToken } from '@/lib/gmail'
+import { getTier, limitsFor } from '@/lib/entitlements'
+import { track } from '@/lib/analytics'
 
 export async function POST() {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Pro-only feature
+  const tier = await getTier(session.user.id)
+  if (!limitsFor(tier).followupsEnabled) {
+    return NextResponse.json({
+      error: 'Follow-ups are a Pro feature. Upgrade to enable auto follow-ups.',
+      upgrade: true,
+      tier,
+    }, { status: 402 })
   }
 
   try {

@@ -2,6 +2,8 @@ import { z } from 'zod'
 import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
 import { TRPCError } from '@trpc/server'
+import { getTier, limitsFor } from '@/lib/entitlements'
+import { track } from '@/lib/analytics'
 
 export const campaignsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -43,9 +45,23 @@ export const campaignsRouter = router({
       attachCv: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      return prisma.campaign.create({
-        data: { ...input, userId: ctx.session.user.id },
+      const userId = ctx.session.user.id
+      const [tier, count] = await Promise.all([
+        getTier(userId),
+        prisma.campaign.count({ where: { userId } }),
+      ])
+      const limit = limitsFor(tier).maxCampaigns
+      if (count >= limit) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: `Free tier is limited to ${limit} campaigns. Upgrade to Pro for unlimited campaigns.`,
+        })
+      }
+      const created = await prisma.campaign.create({
+        data: { ...input, userId },
       })
+      track(userId, 'campaign_created', { campaignId: created.id, tier })
+      return created
     }),
 
   update: protectedProcedure

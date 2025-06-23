@@ -5,6 +5,8 @@ import { generateEmail, type EmailTone } from '@/lib/ai'
 import { validateEmails } from '@/lib/email-validator'
 import { rateLimit, rateLimitBulk } from '@/lib/rate-limit'
 import { randomUUID } from 'crypto'
+import { checkQuota, incrementUsage } from '@/lib/entitlements'
+import { track } from '@/lib/analytics'
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -62,6 +64,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         error: `Rate limit: you've generated too many emails recently. Try again in ${Math.ceil(limit.resetIn / 60)} minutes.`,
       }, { status: 429 })
+    }
+
+    // Plan quota: monthly AI generations cap
+    const quota = await checkQuota(session.user.id, 'ai_generation', estimatedCalls)
+    if (!quota.allowed) {
+      return NextResponse.json({
+        error: `Monthly AI generation limit reached (${quota.limit}/month on ${quota.tier}). You have ${quota.remaining} left. Upgrade to Pro for unlimited generations.`,
+        upgrade: quota.tier === 'FREE',
+        tier: quota.tier,
+        remaining: quota.remaining,
+      }, { status: 402 })
     }
 
     // Build signature block (appended to every email)
@@ -207,6 +220,12 @@ export async function POST(request: NextRequest) {
         ...(generatedCount > 0 ? { status: 'ACTIVE' } : {}),
       },
     })
+
+    // Charge usage only for successful generations
+    if (generatedCount > 0) {
+      await incrementUsage(session.user.id, 'ai_generation', generatedCount)
+      track(session.user.id, 'emails_generated', { count: generatedCount, failed: results.filter((r) => r.error).length })
+    }
 
     return NextResponse.json({
       generated: results.filter((r) => !r.error).length,

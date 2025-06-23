@@ -3,6 +3,8 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { sendGmailEmail } from '@/lib/gmail'
 import { invalidateAppliedCache } from '@/server/routers/regions'
+import { getTier, limitsFor, incrementUsage } from '@/lib/entitlements'
+import { track } from '@/lib/analytics'
 
 export interface SendResult {
   emailId: string
@@ -116,6 +118,17 @@ export async function POST(request: NextRequest) {
     const results: SendResult[] = []
     let isFirst = true
 
+    // Plan-tier email cap (monthly). Compute up-front; counter increments after each successful send.
+    const tier = await getTier(session.user.id)
+    const monthlyLimit = limitsFor(tier).emailsPerMonth
+    const now = new Date()
+    const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+    const sentRow = await prisma.usageCounter.findUnique({
+      where: { userId_action_period: { userId: session.user.id, action: 'email_sent', period } },
+      select: { count: true },
+    })
+    let emailsSentThisMonth = sentRow?.count ?? 0
+
     for (const email of emails) {
       // Random delay between sends (2-5s) to avoid burst-sending spam triggers
       if (!isFirst) {
@@ -160,6 +173,18 @@ export async function POST(request: NextRequest) {
         continue
       }
 
+      // Plan-tier monthly send cap
+      if (emailsSentThisMonth >= monthlyLimit) {
+        results.push({
+          emailId: email.id,
+          companyName: email.company.name,
+          to,
+          status: 'skipped',
+          error: `Free tier limit reached (${monthlyLimit}/month). Upgrade to Pro to send more.`,
+        })
+        continue
+      }
+
       try {
         const { messageId: gmailMessageId, threadId: gmailThreadId } = await sendGmailEmail({
           from: fromHeader,
@@ -186,6 +211,10 @@ export async function POST(request: NextRequest) {
           where: { id: email.company.id },
           data: { status: 'EMAILED' },
         })
+
+        emailsSentThisMonth += 1
+        await incrementUsage(session.user.id, 'email_sent', 1)
+        track(session.user.id, 'email_sent', { campaignId, tier })
 
         results.push({
           emailId: email.id,

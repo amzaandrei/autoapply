@@ -1,0 +1,44 @@
+{$DOMAIN} {
+    encode gzip zstd
+
+    # Forward to Next.js app container
+    reverse_proxy app:3002 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Transport-layer security headers (CSP is set by the app's middleware)
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+        -Server
+    }
+
+    # Health endpoint should not be cached
+    @health path /api/health
+    handle @health {
+        reverse_proxy app:3002
+    }
+
+    # Stripe webhook — preserve raw body
+    @webhook path /api/stripe/webhook
+    handle @webhook {
+        reverse_proxy app:3002 {
+            flush_interval -1
+        }
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
+
+# Redirect www → apex (optional; uncomment and set DOMAIN)
+# www.{$DOMAIN} {
+#     redir https://{$DOMAIN}{uri}
+# }

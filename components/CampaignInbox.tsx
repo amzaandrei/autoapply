@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { Loader2, Send, Mail, Building2, MessageSquare, ArrowLeft } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { sanitizeHtml } from '@/lib/sanitize-html'
 
 interface ThreadMessage {
   id: string
@@ -254,7 +255,16 @@ export function CampaignInbox({ campaignId, initialThreadId }: { campaignId: str
                       <div
                         className={`text-sm leading-relaxed ${msg.isFromUser ? '' : ''}`}
                         dangerouslySetInnerHTML={{
-                          __html: msg.bodyHtml ?? msg.bodyText?.replace(/\n/g, '<br>') ?? '',
+                          __html: sanitizeHtml(
+                            msg.bodyHtml ??
+                              (msg.bodyText
+                                ? msg.bodyText
+                                    .replace(/&/g, '&amp;')
+                                    .replace(/</g, '&lt;')
+                                    .replace(/>/g, '&gt;')
+                                    .replace(/\n/g, '<br>')
+                                : ''),
+                          ),
                         }}
                       />
                     </div>

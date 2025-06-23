@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Settings, LogOut, ChevronDown, Flame } from 'lucide-react'
+import { Settings, LogOut, ChevronDown, Flame, CreditCard, Sparkles } from 'lucide-react'
 
 export function Navbar() {
   const { data: session } = useSession()
@@ -23,10 +23,23 @@ export function Navbar() {
             <span className="text-sm text-muted-foreground">{session.user.name ?? session.user.email}</span>
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem asChild>
               <Link href="/coverage" className="cursor-pointer">
                 <Flame className="h-4 w-4 mr-2" /> Coverage
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/billing" className="cursor-pointer">
+                {session.user.tier === 'PRO' ? (
+                  <Sparkles className="h-4 w-4 mr-2 text-yellow-500" />
+                ) : (
+                  <CreditCard className="h-4 w-4 mr-2" />
+                )}
+                Billing
+                {session.user.tier === 'PRO' && (
+                  <span className="ml-auto text-xs text-yellow-600">Pro</span>
+                )}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
