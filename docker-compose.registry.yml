@@ -1,0 +1,20 @@
+# Override file for CI/CD deploys that pull pre-built images from GHCR
+# instead of building locally. Used together with docker-compose.yml.
+#
+# The `build:` block from the base file is still present, but we pass
+# --no-build in pull-deploy.sh so compose skips it and uses `image` directly.
+#
+# Usage on the VPS (done by scripts/pull-deploy.sh):
+#   IMAGE_TAG=sha-abc1234 docker compose \
+#     -f docker-compose.yml -f docker-compose.registry.yml \
+#     pull app worker
+#   docker compose -f ... up -d --no-build
+
+services:
+  app:
+    image: ${IMAGE:-ghcr.io/clawb00t13-web/autoapply}:${IMAGE_TAG:-latest}
+    pull_policy: always
+
+  worker:
+    image: ${IMAGE:-ghcr.io/clawb00t13-web/autoapply}:${IMAGE_TAG:-latest}
+    pull_policy: always

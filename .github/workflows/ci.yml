@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck + build smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm exec prisma generate
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Build (production)
+        env:
+          # Dummy values so next build can satisfy validation — runtime uses real ones
+          DATABASE_URL: postgresql://build:build@localhost:5432/build
+          AUTH_SECRET: build-only-placeholder-not-for-runtime-use-1234
+          NEXT_PUBLIC_MAPBOX_TOKEN: ${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN || 'pk.dummy' }}
+          NEXT_TELEMETRY_DISABLED: 1
+        run: pnpm build

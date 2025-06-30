@@ -1,0 +1,26 @@
+name: Deploy — prod
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Image tag to deploy (e.g. sha-abc1234 or v1.2.3). Leave empty to use HEAD sha.
+        required: false
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      environment: prod
+      image_tag: ${{ github.event_name == 'push' && github.ref_name || inputs.image_tag }}
+    secrets: inherit
