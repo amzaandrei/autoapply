@@ -1,6 +1,7 @@
 'use client'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,9 +11,77 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Settings, LogOut, ChevronDown, Flame, CreditCard, Sparkles } from 'lucide-react'
 
+// Paths that are part of the marketing site (public). Everything else is the app.
+const MARKETING_PATHS = ['/', '/pricing']
+
 export function Navbar() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
+  const pathname = usePathname()
+  const isMarketing = MARKETING_PATHS.includes(pathname)
+
+  // On auth pages (login/signup), hide navbar entirely
+  if (pathname === '/login' || pathname === '/signup') return null
+
+  // Marketing pages get the public nav, regardless of auth state
+  if (isMarketing) {
+    return <PublicNavbar signedIn={!!session?.user} loading={status === 'loading'} />
+  }
+
+  // App pages: authenticated nav only — return null if not signed in
   if (!session?.user) return null
+  return <AppNavbar session={session} />
+}
+
+function PublicNavbar({ signedIn, loading }: { signedIn: boolean; loading: boolean }) {
+  return (
+    <header className="border-b border-border/50 bg-background/80 backdrop-blur-xl sticky top-0 z-50">
+      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2 font-semibold text-lg">
+          <Sparkles className="h-5 w-5 text-primary" />
+          AutoApply
+        </Link>
+        <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
+          <Link href="/#features" className="hover:text-foreground transition-colors">
+            Features
+          </Link>
+          <Link href="/#how-it-works" className="hover:text-foreground transition-colors">
+            How it works
+          </Link>
+          <Link href="/pricing" className="hover:text-foreground transition-colors">
+            Pricing
+          </Link>
+        </nav>
+        <div className="flex items-center gap-2">
+          {loading ? null : signedIn ? (
+            <Link
+              href="/dashboard"
+              className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              Go to app
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="px-4 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/signup"
+                className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Get started
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+    </header>
+  )
+}
+
+function AppNavbar({ session }: { session: { user: { name?: string | null; email?: string | null; image?: string | null; tier?: 'FREE' | 'PRO' } } }) {
   return (
     <header className="border-b border-border bg-background/95 backdrop-blur sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
