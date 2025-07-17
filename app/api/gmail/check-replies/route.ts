@@ -151,7 +151,7 @@ export async function POST() {
             data: { status: 'BOUNCED' },
           })
           bouncesFound++
-          results.push({ emailId: email.id, replied: false, error: 'Email bounced — try Find Email' })
+          results.push({ emailId: email.id, replied: false, error: 'Email bounced' })
         } else if (foundReply) {
           await prisma.generatedEmail.update({
             where: { id: email.id },

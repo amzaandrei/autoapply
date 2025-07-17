@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       if (fileType === 'application/pdf') {
         // Use Claude's document API for PDFs
         const base64 = Buffer.from(arrayBuffer).toString('base64')
-        const parsed = await parseCVFromBase64(base64)
+        const parsed = await parseCVFromBase64(base64, session.user.id)
         cvText = [
           parsed.fullName,
           parsed.email,
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
         const result = await mammoth.extractRawText({ buffer: Buffer.from(arrayBuffer) })
         cvText = result.value
 
-        const parsed = await parseCVFromText(cvText)
+        const parsed = await parseCVFromText(cvText, session.user.id)
 
         await prisma.userProfile.upsert({
           where: { userId: session.user.id },

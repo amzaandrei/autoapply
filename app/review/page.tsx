@@ -10,13 +10,14 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import {
   CheckCircle,
@@ -35,6 +36,7 @@ import {
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
 import { PageTransition, StaggerItem } from '@/components/Motion'
+import { EmailVerificationBadge } from '@/components/EmailVerificationBadge'
 
 type EmailTone = 'concise' | 'balanced' | 'detailed'
 
@@ -54,6 +56,9 @@ function ReviewPage() {
   const [editBody, setEditBody] = useState('')
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
   const [previewId, setPreviewId] = useState<string | null>(null)
+  const [regenTarget, setRegenTarget] = useState<{ emailId: string; companyId: string; companyName: string } | null>(null)
+  const [regenTone, setRegenTone] = useState<EmailTone>('balanced')
+  const [regenHint, setRegenHint] = useState('')
 
   function toHtml(text: string): string {
     // HTML-escape before wrapping — prevents XSS in email preview.
@@ -162,13 +167,13 @@ function ReviewPage() {
     updateEmail.mutate({ id: editingId, subject: editSubject, body: editBody })
   }
 
-  const regenerateEmail = async (emailId: string, companyId: string, tone: EmailTone) => {
+  const regenerateEmail = async (emailId: string, companyId: string, tone: EmailTone, hint?: string) => {
     setRegeneratingId(emailId)
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId, companyId, tone }),
+        body: JSON.stringify({ campaignId, companyId, tone, hint: hint?.trim() || undefined }),
       })
       const data = await res.json() as { error?: string }
       if (!res.ok) throw new Error(data.error ?? 'Regeneration failed')
@@ -179,6 +184,19 @@ function ReviewPage() {
     } finally {
       setRegeneratingId(null)
     }
+  }
+
+  const openRegen = (email: { id: string; company: { id: string; name: string } }) => {
+    setRegenTarget({ emailId: email.id, companyId: email.company.id, companyName: email.company.name })
+    setRegenTone((campaign.data?.abToneA as EmailTone) ?? 'balanced')
+    setRegenHint('')
+  }
+
+  const submitRegen = async () => {
+    if (!regenTarget) return
+    const { emailId, companyId } = regenTarget
+    setRegenTarget(null)
+    await regenerateEmail(emailId, companyId, regenTone, regenHint)
   }
 
   const hasAbTest = campaign.data?.abTestEnabled ?? false
@@ -273,9 +291,15 @@ function ReviewPage() {
                       )}
                     </div>
                     {email.company.contactEmail && (
-                      <p className="text-xs text-muted-foreground ml-6 mt-0.5">
-                        To: {email.company.contactEmail}
-                      </p>
+                      <div className="flex items-center gap-1.5 ml-6 mt-0.5">
+                        <p className="text-xs text-muted-foreground">
+                          To: {email.company.contactEmail}
+                        </p>
+                        <EmailVerificationBadge
+                          status={email.company.contactEmailStatus}
+                          score={email.company.contactEmailScore}
+                        />
+                      </div>
                     )}
                   </div>
                   <div className="flex gap-1 shrink-0">
@@ -292,42 +316,20 @@ function ReviewPage() {
                             <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
                           </Button>
                         )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              title="Regenerate"
-                              disabled={regeneratingId === email.id}
-                            >
-                              {regeneratingId === email.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <RefreshCw className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56">
-                            <DropdownMenuLabel>Regenerate with tone</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            {TONE_OPTIONS.map((opt) => {
-                              const Icon = opt.icon
-                              return (
-                                <DropdownMenuItem
-                                  key={opt.value}
-                                  onClick={() => void regenerateEmail(email.id, email.company.id, opt.value)}
-                                >
-                                  <Icon className="h-4 w-4 mr-2 shrink-0" />
-                                  <div>
-                                    <p className="font-medium text-sm">{opt.label}</p>
-                                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                                  </div>
-                                </DropdownMenuItem>
-                              )
-                            })}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          title="Regenerate"
+                          disabled={regeneratingId === email.id}
+                          onClick={() => openRegen(email)}
+                        >
+                          {regeneratingId === email.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
                         <Button
                           size="icon"
                           variant="ghost"
@@ -471,6 +473,79 @@ function ReviewPage() {
 
       </div>
       </PageTransition>
+
+      <Dialog
+        open={!!regenTarget}
+        onOpenChange={(open) => { if (!open) setRegenTarget(null) }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Regenerate email
+              {regenTarget && <span className="text-muted-foreground font-normal">— {regenTarget.companyName}</span>}
+            </DialogTitle>
+            <DialogDescription>
+              Pick a tone and optionally nudge the AI with a direction. The rest of the CV context stays the same.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            <div className="space-y-2">
+              <Label className="text-xs">Tone</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {TONE_OPTIONS.map((opt) => {
+                  const Icon = opt.icon
+                  const active = regenTone === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setRegenTone(opt.value)}
+                      className={`rounded-md border p-2.5 text-left transition-colors ${
+                        active ? 'border-primary bg-primary/5' : 'hover:border-primary/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Icon className={`h-3.5 w-3.5 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <p className="text-xs font-medium">{opt.label}</p>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{opt.desc}</p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="regen-hint" className="text-xs">
+                Direction for the AI <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              <Textarea
+                id="regen-hint"
+                value={regenHint}
+                onChange={(e) => setRegenHint(e.target.value.slice(0, 500))}
+                placeholder="e.g. Emphasize my React Native experience. Keep the tone warmer and mention I'm open to remote work."
+                rows={3}
+                className="resize-none"
+              />
+              <p className="text-[10px] text-muted-foreground text-right">
+                {regenHint.length}/500
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRegenTarget(null)}>
+              Cancel
+            </Button>
+            <Button onClick={submitRegen} disabled={!regenTarget || regeneratingId === regenTarget?.emailId}>
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Regenerate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -69,20 +69,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user, trigger }) {
       if (user) token.id = user.id
-      // Refresh tier on sign-in or when client calls update()
+      // Refresh tier + admin status on sign-in or when client calls update()
       if (token.id && (user || trigger === 'update')) {
-        const sub = await prisma.subscription.findUnique({
-          where: { userId: token.id as string },
-          select: { tier: true, status: true },
-        })
+        const [sub, dbUser] = await Promise.all([
+          prisma.subscription.findUnique({
+            where: { userId: token.id as string },
+            select: { tier: true, status: true },
+          }),
+          prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { email: true },
+          }),
+        ])
         const active = sub && (sub.status === 'ACTIVE' || sub.status === 'TRIALING')
-        token.tier = active && sub?.tier === 'PRO' ? 'PRO' : 'FREE'
+        // Prisma SubscriptionTier maps 1:1 to our local Tier union.
+        token.tier = active ? (sub.tier as 'FREE' | 'STARTER' | 'PRO' | 'POWER') : 'FREE'
+        const { isAdminEmail } = await import('@/lib/admin')
+        token.isAdmin = isAdminEmail(dbUser?.email ?? (token.email as string | undefined))
       }
       return token
     },
     async session({ session, token }) {
       if (token.id) session.user.id = token.id as string
-      session.user.tier = (token.tier as 'FREE' | 'PRO') ?? 'FREE'
+      session.user.tier =
+        (token.tier as 'FREE' | 'STARTER' | 'PRO' | 'POWER' | undefined) ?? 'FREE'
+      session.user.isAdmin = token.isAdmin === true
       return session
     },
   },

@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { useState } from 'react'
-import { Layers, Play, Trash2, MapPin, Briefcase } from 'lucide-react'
+import Link from 'next/link'
+import { Layers, Play, Trash2, MapPin, Briefcase, Bot } from 'lucide-react'
 import { StaggerItem } from '@/components/Motion'
 
 export function TemplatesSection() {
@@ -45,7 +46,12 @@ export function TemplatesSection() {
             <Layers className="h-4 w-4" />
             My Templates ({list.length})
           </CardTitle>
-          <p className="text-xs text-muted-foreground">Reusable campaign presets</p>
+          <Link
+            href="/templates"
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+          >
+            <Bot className="h-3 w-3" /> Autopilot settings →
+          </Link>
         </div>
       </CardHeader>
       <CardContent>

@@ -33,7 +33,9 @@ model User {
 
 enum SubscriptionTier {
   FREE
+  STARTER
   PRO
+  POWER
 }
 
 enum SubscriptionStatus {
@@ -63,7 +65,7 @@ model Subscription {
 model UsageCounter {
   id        String   @id @default(cuid())
   userId    String
-  action    String   // "email_sent" | "ai_generation" | "discovery" | "follow_up"
+  action    String   // "email_sent" | "ai_generation" | "discovery" | "follow_up" | "hunter_request"
   period    String   // "YYYY-MM" or "YYYY-MM-DD-HH" for hourly actions
   count     Int      @default(0)
   updatedAt DateTime @updatedAt
@@ -144,6 +146,8 @@ model Campaign {
   description       String?        @db.Text
   status            CampaignStatus @default(DRAFT)
   jobTitle          String?
+  industry          String?
+  region            String?
   useEmailTemplate  Boolean        @default(false)
   followUpEnabled   Boolean        @default(false)
   followUpDelayDays Int            @default(5)
@@ -178,6 +182,10 @@ model Company {
   region       String?
   status       CompanyStatus @default(PENDING)
   notes        String?       @db.Text
+  // Deliverability verification (Hunter.io + DNS fallback). Stale after ~30d.
+  contactEmailStatus   String?  // 'valid' | 'accept_all' | 'webmail' | 'invalid' | 'disposable' | 'unknown' | 'error'
+  contactEmailScore    Int?     // 0-100 Hunter score; null if not checked
+  contactEmailVerifiedAt DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -259,10 +267,44 @@ model CampaignTemplate {
   abTestEnabled     Boolean  @default(false)
   abToneA           String   @default("concise")
   abToneB           String   @default("detailed")
+
+  // Autopilot — cron-driven autonomous discovery + generation + send
+  autopilotEnabled         Boolean   @default(false)
+  autopilotFrequency       String    @default("daily") // "daily" | "every2days" | "weekly"
+  autopilotDailyCap        Int       @default(5)       // max new companies per run
+  autopilotRequireApproval Boolean   @default(true)    // true → save as READY drafts; false → auto-send
+  autopilotTone            String    @default("balanced")
+  autopilotAcceptedAt      DateTime?                    // consent timestamp — null means never opted in
+  autopilotLastRunAt       DateTime?
+  autopilotNextRunAt       DateTime?
+  autopilotCampaignId      String?                      // linked long-running campaign
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs AutopilotRun[]
+
+  @@index([autopilotEnabled, autopilotNextRunAt])
+}
+
+model AutopilotRun {
+  id          String    @id @default(cuid())
+  templateId  String
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  status      String    @default("RUNNING") // RUNNING | SUCCESS | FAILED | SKIPPED
+  skipReason  String?   // e.g. "quota", "no_cv", "no_gmail", "not_pro"
+  discovered  Int       @default(0)
+  generated   Int       @default(0)
+  sent        Int       @default(0)
+  failed      Int       @default(0)
+  error       String?   @db.Text
+  createdAt   DateTime  @default(now())
+
+  template CampaignTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, startedAt])
 }
 
 model InterviewStage {

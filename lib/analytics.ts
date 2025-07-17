@@ -22,7 +22,7 @@ export type AnalyticsEvent =
   | 'emails_generated'
   | 'email_sent'
   | 'email_replied'
-  | 'upgraded_to_pro'
+  | 'upgraded_to_paid'
   | 'downgraded_to_free'
   | 'gate_hit'
   | 'follow_up_sent'

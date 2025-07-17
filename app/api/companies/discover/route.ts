@@ -3,7 +3,7 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { discoverCompanies, type CompanyResult } from '@/lib/ai'
 import { searchAllJobAPIs } from '@/lib/job-apis'
-import { validateEmails } from '@/lib/email-validator'
+import { findAndVerifyForDiscovery } from '@/lib/contact-resolver'
 import { estimateSalary } from '@/lib/salary-estimator'
 import { rateLimit } from '@/lib/rate-limit'
 import { geocodeForwardBatch } from '@/lib/geocode-cache'
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       }, { status: 429 })
     }
 
-    // Plan quota
+    // Plan quota — hourly discovery rate
     const quota = await checkQuota(session.user.id, 'discovery')
     if (!quota.allowed) {
       return NextResponse.json({
@@ -55,6 +55,21 @@ export async function POST(request: NextRequest) {
         tier: quota.tier,
       }, { status: 402 })
     }
+
+    // Hunter monthly cap — protects the Hunter bill from runaway users.
+    // Every company discovered burns up to 2 Hunter credits (1 search + 1 verify),
+    // so refuse the whole search if we're near the cap rather than burn credits
+    // for a half-completed result.
+    const hunterQuota = await checkQuota(session.user.id, 'hunter_request')
+    if (!hunterQuota.allowed) {
+      return NextResponse.json({
+        error: `Monthly email-verification limit reached (${hunterQuota.limit}/month on ${hunterQuota.tier}). Upgrade to Pro for a higher cap.`,
+        upgrade: hunterQuota.tier === 'FREE',
+        tier: hunterQuota.tier,
+        remaining: hunterQuota.remaining,
+      }, { status: 402 })
+    }
+
     await incrementUsage(session.user.id, 'discovery')
 
     // Verify campaign
@@ -68,13 +83,13 @@ export async function POST(request: NextRequest) {
     let companies: CompanyResult[] = []
 
     if (source === 'ai') {
-      companies = await discoverCompanies({ jobTitle, industry, region, additionalContext, searchMode })
+      companies = await discoverCompanies({ jobTitle, industry, region, additionalContext, searchMode, userId: session.user.id })
     } else if (source === 'jobs') {
       companies = await searchAllJobAPIs(jobTitle, region, searchMode)
     } else {
       // 'both' — fetch in parallel, merge, dedup by company name
       const [aiResults, jobResults] = await Promise.all([
-        discoverCompanies({ jobTitle, industry, region, additionalContext, searchMode }),
+        discoverCompanies({ jobTitle, industry, region, additionalContext, searchMode, userId: session.user.id }),
         searchAllJobAPIs(jobTitle, region, searchMode),
       ])
       const seen = new Set<string>()
@@ -99,18 +114,35 @@ export async function POST(request: NextRequest) {
       return true
     })
 
-    // Validate contact emails — filter out companies with invalid/non-existent email addresses
-    const emailsToValidate = companies.map((c) => c.contactEmail).filter(Boolean) as string[]
-    if (emailsToValidate.length > 0) {
-      const validations = await validateEmails(emailsToValidate)
-      const invalidEmails = new Set(validations.filter((v) => !v.valid).map((v) => v.email.toLowerCase()))
-      companies = companies.map((c) => {
-        if (c.contactEmail && invalidEmails.has(c.contactEmail.toLowerCase())) {
-          return { ...c, contactEmail: null }
-        }
-        return c
+    // Verified-only gate: every company shown to the user must have a
+    // Hunter-verified hiring email. For companies without an email, Hunter
+    // attempts to find one from the company name/domain. Anything Hunter
+    // can't produce *and* verify is dropped — the user only sees companies
+    // they can actually email. Sequential because Hunter rate-limits.
+    const beforeVerify = companies.length
+    const verifiedCompanies: CompanyResult[] = []
+    // Stop verifying if we'd blow past the per-user Hunter cap mid-loop.
+    // Each iteration can burn up to 2 Hunter credits (search + verify).
+    let hunterCreditsRemaining = hunterQuota.remaining
+    for (const c of companies) {
+      if (hunterCreditsRemaining <= 0) break
+      const verified = await findAndVerifyForDiscovery({
+        companyName: c.name,
+        domain: c.domain,
+        existingEmail: c.contactEmail,
+        userId: session.user.id,
+      })
+      // Worst case: 1 domain search (if email missing) + 1 verify
+      hunterCreditsRemaining -= 2
+      if (!verified) continue
+      verifiedCompanies.push({
+        ...c,
+        contactEmail: verified.email,
+        domain: c.domain || verified.resolvedDomain || '',
       })
     }
+    const droppedUnverified = beforeVerify - verifiedCompanies.length
+    companies = verifiedCompanies
 
     // Tag companies that were already contacted across any campaign
     const previouslySent = await prisma.generatedEmail.findMany({
@@ -189,9 +221,14 @@ export async function POST(request: NextRequest) {
     track(session.user.id, 'companies_discovered', {
       count: taggedCompanies.length,
       saved: saveResults ? toSave.length : 0,
+      droppedUnverified,
       source,
     })
-    return NextResponse.json({ companies: taggedCompanies, saved: saveResults ? toSave.length : 0 })
+    return NextResponse.json({
+      companies: taggedCompanies,
+      saved: saveResults ? toSave.length : 0,
+      droppedUnverified,
+    })
   } catch (err) {
     console.error('Discover error:', err)
     const message = err instanceof Error ? err.message : 'Discovery failed'

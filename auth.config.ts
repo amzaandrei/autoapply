@@ -11,17 +11,27 @@ export const authConfig: NextAuthConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user
-      const isOnLogin = nextUrl.pathname === '/login'
-      const isOnSignup = nextUrl.pathname === '/signup'
-      const isOnAuth = nextUrl.pathname.startsWith('/api/auth')
+      const path = nextUrl.pathname
 
-      if (isOnAuth) return true
+      // Always-public routes
+      const publicPaths = ['/', '/pricing']
+      const isPublic = publicPaths.includes(path)
+      const isOnLogin = path === '/login'
+      const isOnSignup = path === '/signup'
+      const isOnAuth = path.startsWith('/api/auth')
+      // Public API routes the app itself hits without a session
+      const isPublicApi =
+        path.startsWith('/api/stripe/webhook') ||
+        path.startsWith('/api/health') ||
+        path.startsWith('/api/track/open')
+
+      if (isOnAuth || isPublic || isPublicApi) return true
       if (isOnLogin || isOnSignup) {
         if (isLoggedIn) return Response.redirect(new URL('/dashboard', nextUrl))
         return true
       }
       if (!isLoggedIn) {
-        const callbackUrl = encodeURIComponent(nextUrl.pathname + nextUrl.search)
+        const callbackUrl = encodeURIComponent(path + nextUrl.search)
         return Response.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, nextUrl))
       }
       return true

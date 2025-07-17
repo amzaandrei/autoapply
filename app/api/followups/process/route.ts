@@ -116,6 +116,7 @@ export async function POST() {
             sequence,
             cvText: profile?.cvText ?? '',
             jobTitle: campaign.jobTitle ?? profile?.jobTitle ?? '',
+            userId: session.user.id,
           })
 
           let body = generated.body

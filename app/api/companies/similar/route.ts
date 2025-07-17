@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       existingCompanies: campaign.companies,
       jobTitle: campaign.jobTitle ?? 'Software Engineer',
       region: 'Global',
+      userId: session.user.id,
     })
 
     return NextResponse.json({ companies })

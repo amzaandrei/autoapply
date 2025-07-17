@@ -3,6 +3,7 @@
  * Throws only on actual use — importing the module is safe.
  */
 import Stripe from 'stripe'
+import type { Tier } from './tier-limits'
 
 const isProd = process.env.NODE_ENV === 'production'
 
@@ -14,9 +15,18 @@ export const STRIPE_WEBHOOK_SECRET = isProd
   ? process.env.STRIPE_WEBHOOK_SECRET
   : process.env.STRIPE_WEBHOOK_SECRET_TEST ?? process.env.STRIPE_WEBHOOK_SECRET
 
-export const STRIPE_PRICE_ID_PRO = isProd
-  ? process.env.STRIPE_PRICE_ID_PRO
-  : process.env.STRIPE_PRICE_ID_PRO_TEST ?? process.env.STRIPE_PRICE_ID_PRO
+function envForPlan(plan: 'STARTER' | 'PRO' | 'POWER'): string | undefined {
+  // Test IDs fall back to live IDs outside production, so local dev works even
+  // if you've only configured one set.
+  const liveVar = `STRIPE_PRICE_ID_${plan}`
+  const testVar = `STRIPE_PRICE_ID_${plan}_TEST`
+  if (isProd) return process.env[liveVar]
+  return process.env[testVar] ?? process.env[liveVar]
+}
+
+export const STRIPE_PRICE_ID_STARTER = envForPlan('STARTER')
+export const STRIPE_PRICE_ID_PRO = envForPlan('PRO')
+export const STRIPE_PRICE_ID_POWER = envForPlan('POWER')
 
 let _stripe: Stripe | null = null
 
@@ -34,13 +44,48 @@ export function stripe(): Stripe {
   return _stripe
 }
 
-export function requirePriceId(): string {
-  if (!STRIPE_PRICE_ID_PRO) {
-    throw new Error(
-      `Stripe price id missing. Set ${isProd ? 'STRIPE_PRICE_ID_PRO' : 'STRIPE_PRICE_ID_PRO_TEST'}.`,
-    )
+export type PaidPlan = 'STARTER' | 'PRO' | 'POWER'
+
+export function isPaidPlan(value: unknown): value is PaidPlan {
+  return value === 'STARTER' || value === 'PRO' || value === 'POWER'
+}
+
+/**
+ * Resolve the Stripe price id for a given paid plan. Throws a descriptive
+ * error pointing at the specific env var that's missing, so misconfigured
+ * plans fail loudly at checkout rather than defaulting to the wrong tier.
+ */
+export function requirePriceIdFor(plan: PaidPlan): string {
+  const map: Record<PaidPlan, string | undefined> = {
+    STARTER: STRIPE_PRICE_ID_STARTER,
+    PRO: STRIPE_PRICE_ID_PRO,
+    POWER: STRIPE_PRICE_ID_POWER,
   }
-  return STRIPE_PRICE_ID_PRO
+  const id = map[plan]
+  if (!id) {
+    const envVar = isProd ? `STRIPE_PRICE_ID_${plan}` : `STRIPE_PRICE_ID_${plan}_TEST`
+    throw new Error(`Stripe price id missing for ${plan}. Set ${envVar}.`)
+  }
+  return id
+}
+
+/**
+ * Inverse lookup — given a Stripe price id (from a webhook or subscription),
+ * figure out which plan it corresponds to. Falls back to PRO for legacy rows
+ * that predate the STARTER/POWER tiers (those users were sold the old single
+ * Pro plan). Returns null only if we truly don't recognize the id.
+ */
+export function planForPriceId(priceId: string | null | undefined): PaidPlan | null {
+  if (!priceId) return null
+  if (priceId === STRIPE_PRICE_ID_STARTER) return 'STARTER'
+  if (priceId === STRIPE_PRICE_ID_PRO) return 'PRO'
+  if (priceId === STRIPE_PRICE_ID_POWER) return 'POWER'
+  return null
+}
+
+/** @deprecated — use requirePriceIdFor('PRO'). Kept for any legacy callers. */
+export function requirePriceId(): string {
+  return requirePriceIdFor('PRO')
 }
 
 export function requireWebhookSecret(): string {
@@ -54,4 +99,13 @@ export function requireWebhookSecret(): string {
 
 export function appUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? 'http://localhost:3002'
+}
+
+/**
+ * Cast-guard for the Prisma `SubscriptionTier` enum — use when assigning back
+ * to DB from a resolved plan. Since our Prisma enum mirrors the Tier union
+ * exactly, this is a pure compile-time narrowing.
+ */
+export function tierFromPlan(plan: PaidPlan): Tier {
+  return plan
 }

@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
-import { stripe } from '@/lib/stripe'
+import { stripe, planForPriceId } from '@/lib/stripe'
 import { logger } from '@/lib/logger'
+import type { Tier } from '@/lib/tier-limits'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -56,9 +57,10 @@ export async function POST() {
       }
     }
 
-    const newTier: 'FREE' | 'PRO' =
-      sub.status === 'active' || sub.status === 'trialing' ? 'PRO' : 'FREE'
     const priceId = sub.items.data[0]?.price?.id
+    const active = sub.status === 'active' || sub.status === 'trialing'
+    const resolvedPlan = planForPriceId(priceId)
+    const newTier: Tier = active ? (resolvedPlan ?? 'PRO') : 'FREE'
     const sAny = sub as unknown as {
       current_period_start?: number | null
       current_period_end?: number | null

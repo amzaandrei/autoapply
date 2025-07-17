@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Settings, LogOut, ChevronDown, Flame, CreditCard, Sparkles } from 'lucide-react'
+import { Settings, LogOut, ChevronDown, Flame, CreditCard, Sparkles, Shield } from 'lucide-react'
 
 // Paths that are part of the marketing site (public). Everything else is the app.
 const MARKETING_PATHS = ['/', '/pricing']
@@ -81,7 +81,24 @@ function PublicNavbar({ signedIn, loading }: { signedIn: boolean; loading: boole
   )
 }
 
-function AppNavbar({ session }: { session: { user: { name?: string | null; email?: string | null; image?: string | null; tier?: 'FREE' | 'PRO' } } }) {
+type AppTier = 'FREE' | 'STARTER' | 'PRO' | 'POWER'
+
+function tierBadge(tier: AppTier | undefined): { label: string; color: string } | null {
+  switch (tier) {
+    case 'STARTER':
+      return { label: 'Starter', color: 'text-blue-600' }
+    case 'PRO':
+      return { label: 'Pro', color: 'text-yellow-600' }
+    case 'POWER':
+      return { label: 'Power', color: 'text-purple-600' }
+    default:
+      return null
+  }
+}
+
+function AppNavbar({ session }: { session: { user: { name?: string | null; email?: string | null; image?: string | null; tier?: AppTier; isAdmin?: boolean } } }) {
+  const badge = tierBadge(session.user.tier)
+  const isPaid = session.user.tier && session.user.tier !== 'FREE'
   return (
     <header className="border-b border-border bg-background/95 backdrop-blur sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -100,14 +117,14 @@ function AppNavbar({ session }: { session: { user: { name?: string | null; email
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/billing" className="cursor-pointer">
-                {session.user.tier === 'PRO' ? (
+                {isPaid ? (
                   <Sparkles className="h-4 w-4 mr-2 text-yellow-500" />
                 ) : (
                   <CreditCard className="h-4 w-4 mr-2" />
                 )}
                 Billing
-                {session.user.tier === 'PRO' && (
-                  <span className="ml-auto text-xs text-yellow-600">Pro</span>
+                {badge && (
+                  <span className={`ml-auto text-xs ${badge.color}`}>{badge.label}</span>
                 )}
               </Link>
             </DropdownMenuItem>
@@ -116,6 +133,13 @@ function AppNavbar({ session }: { session: { user: { name?: string | null; email
                 <Settings className="h-4 w-4 mr-2" /> Settings
               </Link>
             </DropdownMenuItem>
+            {session.user.isAdmin && (
+              <DropdownMenuItem asChild>
+                <Link href="/admin" className="cursor-pointer">
+                  <Shield className="h-4 w-4 mr-2 text-primary" /> Admin
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="cursor-pointer text-destructive focus:text-destructive"

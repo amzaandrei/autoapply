@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { generateEmail, type EmailTone } from '@/lib/ai'
-import { validateEmails } from '@/lib/email-validator'
+import { resolveContactEmail } from '@/lib/contact-resolver'
 import { rateLimit, rateLimitBulk } from '@/lib/rate-limit'
 import { randomUUID } from 'crypto'
 import { checkQuota, incrementUsage } from '@/lib/entitlements'
@@ -15,8 +15,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json() as { campaignId: string; companyId?: string; tone?: 'concise' | 'balanced' | 'detailed' }
-    const { campaignId, companyId, tone } = body
+    const body = await request.json() as { campaignId: string; companyId?: string; tone?: 'concise' | 'balanced' | 'detailed'; hint?: string }
+    const { campaignId, companyId, tone, hint } = body
 
     if (!campaignId) {
       return NextResponse.json({ error: 'campaignId required' }, { status: 400 })
@@ -85,12 +85,15 @@ export async function POST(request: NextRequest) {
     ].filter(Boolean)
     const signatureBlock = signatureParts.length > 0 ? signatureParts.join('\n') : ''
 
-    // Pre-validate emails to skip companies with invalid/non-existent addresses
-    // Saves AI tokens by not generating for emails that would bounce
-    const contactEmails = campaign.companies.map((c) => c.contactEmail).filter(Boolean) as string[]
-    const validations = await validateEmails(contactEmails)
-    const invalidEmails = new Set(validations.filter((v) => !v.valid).map((v) => v.email.toLowerCase()))
-    const invalidReasonMap = new Map(validations.filter((v) => !v.valid).map((v) => [v.email.toLowerCase(), v.reason]))
+    // Verified-only gate: for every company with a contact email, confirm
+    // deliverability via Hunter.io (or MX fallback). This prevents the AI from
+    // burning tokens on addresses that will bounce — which both wastes quota
+    // and damages the user's Gmail sender reputation.
+    const verdictByCompanyId = new Map<string, Awaited<ReturnType<typeof resolveContactEmail>>>()
+    for (const c of campaign.companies) {
+      if (!c.contactEmail) continue
+      verdictByCompanyId.set(c.id, await resolveContactEmail(c, session.user.id))
+    }
 
     // Get emails already sent across ALL campaigns
     const alreadySent = await prisma.generatedEmail.findMany({
@@ -110,7 +113,7 @@ export async function POST(request: NextRequest) {
       try {
         // Skip companies without ANY contact email (saves AI tokens — can't send anyway)
         if (!company.contactEmail) {
-          results.push({ companyId: company.id, companyName: company.name, error: 'No contact email — use Find Email first' })
+          results.push({ companyId: company.id, companyName: company.name, error: 'No contact email' })
           continue
         }
         // Skip obviously malformed emails (saves AI tokens)
@@ -119,10 +122,14 @@ export async function POST(request: NextRequest) {
           continue
         }
         const emailLower = company.contactEmail.toLowerCase()
-        // Skip emails whose domain has no MX record (already validated earlier in flow)
-        if (invalidEmails.has(emailLower)) {
-          const reason = invalidReasonMap.get(emailLower) ?? 'invalid'
-          results.push({ companyId: company.id, companyName: company.name, error: `Invalid email: ${reason}` })
+        // Skip addresses that failed deliverability verification
+        const verdict = verdictByCompanyId.get(company.id)
+        if (verdict?.kind === 'invalid_email') {
+          results.push({ companyId: company.id, companyName: company.name, error: `Unverified: ${verdict.reason}` })
+          continue
+        }
+        if (verdict?.kind === 'risky_email') {
+          results.push({ companyId: company.id, companyName: company.name, error: `Unverified: ${verdict.reason}` })
           continue
         }
         // Skip emails already sent to in a previous campaign
@@ -144,7 +151,7 @@ export async function POST(request: NextRequest) {
             .replace(/\{\{company\}\}/g, company.name)
             .replace(/\{\{position\}\}/g, jobTitle)
             .replace(/\{\{[^}]+\}\}/g, '')
-          const subject = `Application for ${jobTitle} at ${company.name}`
+          const subject = `Application at ${company.name}`
           if (signatureBlock) body = `${body}\n${signatureBlock}`
 
           const email = await prisma.generatedEmail.create({
@@ -166,6 +173,8 @@ export async function POST(request: NextRequest) {
               contactName: company.contactName,
               skills: profile.skills ?? [],
               tone: variantTone,
+              hint,
+              userId: session.user.id,
             })
             let body = generated.body
             if (signatureBlock) body = `${body}\n${signatureBlock}`
@@ -195,6 +204,8 @@ export async function POST(request: NextRequest) {
             contactName: company.contactName,
             skills: profile.skills ?? [],
             tone,
+            hint,
+            userId: session.user.id,
           })
           let body = generated.body
           if (signatureBlock) body = `${body}\n${signatureBlock}`

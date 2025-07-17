@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { MoreHorizontal, ArrowRight, Send, Inbox, Kanban, BarChart3, Download, Trash2, Layers, PenSquare } from 'lucide-react'
+import { MoreHorizontal, ArrowRight, Send, Inbox, Kanban, BarChart3, Download, Trash2, Layers, PenSquare, CalendarDays, X } from 'lucide-react'
 import { StaggerItem } from '@/components/Motion'
 import { SaveTemplateDialog } from '@/components/SaveTemplateDialog'
 import { trpc } from '@/lib/trpc'
@@ -70,11 +70,83 @@ function formatCampaignName(name: string): string {
 
 const PAGE_SIZE = 5
 
-export default function CampaignList({ campaigns: initialCampaigns }: { campaigns: Campaign[] }) {
+// YYYY-MM-DD key in local TZ (so "today" matches what the user sees on their clock)
+function localDateKey(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function shiftDay(base: Date, delta: number): Date {
+  const d = new Date(base)
+  d.setDate(d.getDate() + delta)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function pillLabel(d: Date, todayKey: string, yesterdayKey: string): string {
+  const key = localDateKey(d)
+  if (key === todayKey) return 'Today'
+  if (key === yesterdayKey) return 'Yesterday'
+  return d.toLocaleDateString([], { weekday: 'short', day: 'numeric' })
+}
+
+export default function CampaignList({
+  campaigns: initialCampaigns,
+  sentDatesByCampaign = {},
+}: {
+  campaigns: Campaign[]
+  sentDatesByCampaign?: Record<string, string[]>
+}) {
   const [campaigns, setCampaigns] = useState(initialCampaigns)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [saveTemplateCampaignId, setSaveTemplateCampaignId] = useState<string | null>(null)
+
+  // Bucket sent-email ISO strings into per-campaign local-date keys (memoized
+  // so we don't re-parse every render)
+  const sentDayKeysByCampaign = useMemo(() => {
+    const out: Record<string, Set<string>> = {}
+    for (const [cid, isoList] of Object.entries(sentDatesByCampaign)) {
+      const set = new Set<string>()
+      for (const iso of isoList) set.add(localDateKey(new Date(iso)))
+      out[cid] = set
+    }
+    return out
+  }, [sentDatesByCampaign])
+
+  const allActivityDays = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of Object.values(sentDayKeysByCampaign)) {
+      for (const d of s) set.add(d)
+    }
+    return set
+  }, [sentDayKeysByCampaign])
+
+  const hasAnyActivity = allActivityDays.size > 0
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todayKey = localDateKey(today)
+  const yesterdayKey = localDateKey(shiftDay(today, -1))
+
+  // Default: today. null = "All dates" escape hatch so the user can reset.
+  const [filterDate, setFilterDate] = useState<string | null>(todayKey)
+
+  const pillDays = useMemo(
+    () => [-3, -2, -1, 0].map((delta) => shiftDay(today, delta)),
+    // today is re-derived every render but the key doesn't change within a day
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [todayKey],
+  )
+
+  const filteredCampaigns = useMemo(() => {
+    if (!filterDate) return campaigns
+    return campaigns.filter((c) => sentDayKeysByCampaign[c.id]?.has(filterDate))
+  }, [campaigns, filterDate, sentDayKeysByCampaign])
+
+  const activeDayCount = filterDate ? filteredCampaigns.length : campaigns.length
   const saveFromCampaign = trpc.templates.saveFromCampaign.useMutation({
     onSuccess: () => toast.success('Template saved'),
     onError: (e) => toast.error(e.message),
@@ -119,9 +191,70 @@ export default function CampaignList({ campaigns: initialCampaigns }: { campaign
 
   return (
     <div>
-      <h2 className="text-lg font-semibold mb-4">Recent Campaigns</h2>
+      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <h2 className="text-lg font-semibold">Recent Campaigns</h2>
+
+        {hasAnyActivity && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+            {pillDays.map((d) => {
+              const key = localDateKey(d)
+              const active = filterDate === key
+              const hasActivity = allActivityDays.has(key)
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFilterDate(active ? null : key)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                    active
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'hover:border-primary/50 text-muted-foreground'
+                  }`}
+                  title={d.toLocaleDateString([], {
+                    weekday: 'long',
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                >
+                  {pillLabel(d, todayKey, yesterdayKey)}
+                  {hasActivity && !active && (
+                    <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-primary align-middle" />
+                  )}
+                </button>
+              )
+            })}
+            <input
+              type="date"
+              value={filterDate ?? ''}
+              onChange={(e) => setFilterDate(e.target.value || null)}
+              max={todayKey}
+              className="text-xs px-2 py-1 rounded-md border bg-background hover:border-primary/50 transition-colors"
+            />
+            {filterDate && (
+              <button
+                type="button"
+                onClick={() => setFilterDate(null)}
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+                title="Clear filter"
+              >
+                <X className="h-3 w-3" /> All
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {filterDate && (
+        <p className="text-xs text-muted-foreground mb-3">
+          {activeDayCount === 0
+            ? `No campaigns sent on ${new Date(filterDate + 'T00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}.`
+            : `Showing ${activeDayCount} campaign${activeDayCount === 1 ? '' : 's'} with emails sent on ${new Date(filterDate + 'T00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })}.`}
+        </p>
+      )}
+
       <div className="space-y-2">
-        {campaigns.slice(0, visibleCount).map((campaign, idx) => {
+        {filteredCampaigns.slice(0, visibleCount).map((campaign, idx) => {
           // Pick the most relevant next action
           const primaryHref =
             campaign._count.emails === 0
@@ -234,16 +367,20 @@ export default function CampaignList({ campaigns: initialCampaigns }: { campaign
         })}
       </div>
 
-      {campaigns.length > PAGE_SIZE && (
+      {filteredCampaigns.length > PAGE_SIZE && (
         <div className="flex justify-center mt-3">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setVisibleCount(visibleCount >= campaigns.length ? PAGE_SIZE : visibleCount + PAGE_SIZE)}
+            onClick={() =>
+              setVisibleCount(
+                visibleCount >= filteredCampaigns.length ? PAGE_SIZE : visibleCount + PAGE_SIZE,
+              )
+            }
           >
-            {visibleCount >= campaigns.length
+            {visibleCount >= filteredCampaigns.length
               ? 'Show less'
-              : `Show ${Math.min(PAGE_SIZE, campaigns.length - visibleCount)} more (${campaigns.length - visibleCount} remaining)`}
+              : `Show ${Math.min(PAGE_SIZE, filteredCampaigns.length - visibleCount)} more (${filteredCampaigns.length - visibleCount} remaining)`}
           </Button>
         </div>
       )}

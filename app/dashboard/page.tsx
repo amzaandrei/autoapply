@@ -22,7 +22,7 @@ export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 
-  const [campaigns, profile, emailStats, contactedCompanies] = await Promise.all([
+  const [campaigns, profile, emailStats, contactedCompanies, sentByCampaign] = await Promise.all([
     prisma.campaign.findMany({
       where: { userId: session.user.id },
       include: { _count: { select: { companies: true, emails: true } } },
@@ -50,7 +50,23 @@ export default async function DashboardPage() {
       },
       orderBy: { sentAt: 'desc' },
     }),
+    prisma.generatedEmail.findMany({
+      where: {
+        campaign: { userId: session.user.id },
+        sentAt: { not: null },
+      },
+      select: { campaignId: true, sentAt: true },
+    }),
   ])
+
+  // Build { campaignId: [YYYY-MM-DD, ...] } in the user's browser TZ on the client.
+  // For the initial SSR default, we pass raw ISO strings and let the client bucket.
+  const sentDatesByCampaign: Record<string, string[]> = {}
+  for (const row of sentByCampaign) {
+    if (!row.sentAt) continue
+    const list = sentDatesByCampaign[row.campaignId] ?? (sentDatesByCampaign[row.campaignId] = [])
+    list.push(row.sentAt.toISOString())
+  }
 
   const totalSent = campaigns.reduce((sum, c) => sum + c.sentCount, 0)
   const statusCounts = Object.fromEntries(emailStats.map((s) => [s.status, s._count]))
@@ -177,7 +193,7 @@ export default async function DashboardPage() {
 
         {/* Recent campaigns */}
         {campaigns.length > 0 ? (
-          <CampaignList campaigns={campaigns} />
+          <CampaignList campaigns={campaigns} sentDatesByCampaign={sentDatesByCampaign} />
         ) : (
           <Card>
             <CardContent className="py-12">

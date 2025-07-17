@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { recordAnthropicUsage } from './anthropic-usage'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -81,11 +82,18 @@ export async function generateEmail(params: {
   contactName?: string | null
   skills?: string[]
   tone?: EmailTone
+  /**
+   * Free-form user direction for this generation — e.g. "emphasize my mobile
+   * experience" or "don't mention salary". Honoured verbatim by the model.
+   */
+  hint?: string | null
+  userId?: string | null
 }): Promise<GeneratedEmailResult> {
   const cvSummary = params.cvText.slice(0, 3000)
   const greeting = params.contactName ? `Dear ${params.contactName},` : 'Dear Hiring Team,'
   const tone = params.tone ?? 'balanced'
   const { wordLimit, structure } = TONE_PROMPTS[tone]
+  const hint = params.hint?.trim().slice(0, 500) || null
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
@@ -94,6 +102,7 @@ export async function generateEmail(params: {
 CRITICAL RULES:
 - NEVER output placeholder text like [Your message here], [insert X], or any bracketed placeholders — write real content always
 - Use the actual company name throughout, never "the company"
+- Subject MUST be exactly "Application at {company}" — do NOT include the job title or any role name in the subject
 - ${wordLimit}
 - Professional but natural tone — not robotic
 - Do NOT include phone numbers in the email body
@@ -115,7 +124,7 @@ ${params.skills && params.skills.length > 0 ? `Key Skills: ${params.skills.join(
 
 My CV (summary):
 ${cvSummary}
-
+${hint ? `\nUSER DIRECTION (must honour verbatim, overrides default phrasing where it conflicts): ${hint}\n` : ''}
 Start the body with: "${greeting}"
 
 IMPORTANT FORMATTING: Each paragraph MUST be separated by \\n\\n (two newlines) in the JSON string. The body must have exactly 3 paragraphs + the sign-off, each on its own block.
@@ -123,10 +132,11 @@ IMPORTANT FORMATTING: Each paragraph MUST be separated by \\n\\n (two newlines) 
 End with: "Best regards," on its own line (signature appended separately — do NOT include name, email, or phone).
 
 Return JSON where the body uses \\n\\n between every paragraph:
-{"subject": "Application for ${params.jobTitle} at ${params.companyName}", "body": "Dear Hiring Team,\\n\\nParagraph 1 here.\\n\\nParagraph 2 here.\\n\\nParagraph 3 here.\\n\\nBest regards,"}`,
+{"subject": "Application at ${params.companyName}", "body": "Dear Hiring Team,\\n\\nParagraph 1 here.\\n\\nParagraph 2 here.\\n\\nParagraph 3 here.\\n\\nBest regards,"}`,
       },
     ],
   })
+  await recordAnthropicUsage(params.userId, response.usage)
 
   const text = response.content.find((b) => b.type === 'text')
   if (!text || text.type !== 'text') throw new Error('No text response from AI')
@@ -160,6 +170,7 @@ export async function generateFollowUp(params: {
   sequence: number
   cvText: string
   jobTitle: string
+  userId?: string | null
 }): Promise<GeneratedEmailResult> {
   const sequencePrompt = FOLLOWUP_PROMPTS[params.sequence] ?? FOLLOWUP_PROMPTS[1]
   const greeting = params.contactName ? `Hi ${params.contactName},` : 'Hi,'
@@ -197,6 +208,7 @@ Return JSON:
       },
     ],
   })
+  await recordAnthropicUsage(params.userId, response.usage)
 
   const text = response.content.find((b) => b.type === 'text')
   if (!text || text.type !== 'text') throw new Error('No text response from AI')
@@ -229,6 +241,7 @@ export async function discoverCompanies(params: {
   region: string
   additionalContext?: string
   searchMode?: SearchMode
+  userId?: string | null
 }): Promise<CompanyResult[]> {
   const mode = params.searchMode ?? 'top10'
   const { count, instruction } = SEARCH_MODE_PROMPTS[mode]
@@ -286,6 +299,7 @@ Return JSON with this exact schema:
       },
     ] as unknown) as Anthropic.Messages.Tool[],
   })
+  await recordAnthropicUsage(params.userId, response.usage)
 
   const textBlocks = response.content.filter(
     (b): b is Anthropic.TextBlock => b.type === 'text'
@@ -297,9 +311,9 @@ Return JSON with this exact schema:
   return parsed.companies ?? []
 }
 
-export async function parseCVFromBase64(pdfBase64: string): Promise<ParsedCV> {
+export async function parseCVFromBase64(pdfBase64: string, userId?: string | null): Promise<ParsedCV> {
   const response = await client.messages.create({
-    model: 'claude-opus-4-6',
+    model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     system: `You are an expert resume parser. Extract all candidate information.
 Return ONLY a valid JSON object — no markdown fences, no explanation.
@@ -335,6 +349,7 @@ Skills as a flat array of individual skill strings.`,
       },
     ],
   })
+  await recordAnthropicUsage(userId, response.usage)
 
   const text = response.content.find((b) => b.type === 'text')
   if (!text || text.type !== 'text') throw new Error('No text response from CV parse')
@@ -344,7 +359,7 @@ Skills as a flat array of individual skill strings.`,
   return JSON.parse(jsonStr) as ParsedCV
 }
 
-export async function parseCVFromText(cvText: string): Promise<ParsedCV> {
+export async function parseCVFromText(cvText: string, userId?: string | null): Promise<ParsedCV> {
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
@@ -369,6 +384,7 @@ Skills as a flat array of individual skill strings.`,
       },
     ],
   })
+  await recordAnthropicUsage(userId, response.usage)
 
   const text = response.content.find((b) => b.type === 'text')
   if (!text || text.type !== 'text') throw new Error('No text response from CV parse')
@@ -385,6 +401,7 @@ export async function discoverSimilarCompanies(params: {
   jobTitle: string
   region: string
   count?: number
+  userId?: string | null
 }): Promise<CompanyResult[]> {
   const companyList = params.existingCompanies.map((c) => `${c.name} (${c.industry ?? 'unknown'}, ${c.size ?? ''})`).join('\n')
   const response = await client.messages.create({
@@ -395,6 +412,7 @@ export async function discoverSimilarCompanies(params: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools: ([{ type: 'web_search_20250305', name: 'web_search', max_uses: 6, allowed_domains: ['linkedin.com','crunchbase.com','wellfound.com','builtin.com','greenhouse.io','lever.co','techcrunch.com'] }] as unknown) as Anthropic.Messages.Tool[],
   })
+  await recordAnthropicUsage(params.userId, response.usage)
   const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
   const finalText = textBlocks[textBlocks.length - 1]?.text ?? ''
   const jsonStr = finalText.match(/\{[\s\S]*\}/)?.[0] ?? finalText
@@ -413,7 +431,7 @@ export interface CompanyEnrichment {
   summary: string
 }
 
-export async function enrichCompany(params: { name: string; domain?: string | null; industry?: string | null }): Promise<CompanyEnrichment> {
+export async function enrichCompany(params: { name: string; domain?: string | null; industry?: string | null; userId?: string | null }): Promise<CompanyEnrichment> {
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
@@ -422,6 +440,7 @@ export async function enrichCompany(params: { name: string; domain?: string | nu
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools: ([{ type: 'web_search_20250305', name: 'web_search', max_uses: 4, allowed_domains: ['linkedin.com','crunchbase.com','glassdoor.com','builtin.com','techcrunch.com','github.com'] }] as unknown) as Anthropic.Messages.Tool[],
   })
+  await recordAnthropicUsage(params.userId, response.usage)
   const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
   const finalText = textBlocks[textBlocks.length - 1]?.text ?? ''
   const jsonStr = finalText.match(/\{[\s\S]*\}/)?.[0] ?? finalText
@@ -431,7 +450,7 @@ export async function enrichCompany(params: { name: string; domain?: string | nu
 // ─── CV Tailoring ────────────────────────────────────────────────────────
 
 export async function tailorCVForCompany(params: {
-  cvText: string; companyName: string; companyDescription?: string | null; companyIndustry?: string | null; jobTitle: string; skills: string[]
+  cvText: string; companyName: string; companyDescription?: string | null; companyIndustry?: string | null; jobTitle: string; skills: string[]; userId?: string | null
 }): Promise<{ tailoredSummary: string; emphasizedSkills: string[]; adjustedExperience: string }> {
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -439,6 +458,7 @@ export async function tailorCVForCompany(params: {
     system: `You are a CV optimization expert. Tailor CV focus for a specific company. Do NOT fabricate experience — only re-emphasize existing skills. Return ONLY valid JSON.`,
     messages: [{ role: 'user', content: `Tailor for ${params.companyName} (${params.companyIndustry ?? ''})${params.companyDescription ? `: ${params.companyDescription.slice(0, 300)}` : ''}. Role: ${params.jobTitle}. Skills: ${params.skills.join(', ')}\n\nCV:\n${params.cvText.slice(0, 2000)}\n\nReturn JSON: { "tailoredSummary":"2-3 sentences", "emphasizedSkills":["top 5-8 relevant skills"], "adjustedExperience":"paragraph highlighting most relevant experience" }` }],
   })
+  await recordAnthropicUsage(params.userId, response.usage)
   const text = response.content.find((b) => b.type === 'text')
   if (!text || text.type !== 'text') throw new Error('No response')
   const raw = text.text.trim()
@@ -446,49 +466,3 @@ export async function tailorCVForCompany(params: {
   return JSON.parse(jsonStr)
 }
 
-// ─── Find Contact Email ──────────────────────────────────────────────────
-// Uses web search to discover the hiring/careers email of a company
-
-export async function findCompanyContactEmail(params: {
-  companyName: string
-  domain?: string | null
-}): Promise<{ email: string | null; reasoning: string }> {
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    system: `You are a research assistant that finds the hiring/careers contact email for a company.
-Search the web (LinkedIn, company website, job listings). Return ONLY valid JSON. No markdown fences.
-
-If you find multiple candidates, prefer in this order: careers@, jobs@, hiring@, talent@, recruitment@, hr@.
-Only return an email you are confident exists. Otherwise return null.`,
-    messages: [{
-      role: 'user',
-      content: `Find the hiring contact email for this company:
-
-Company: ${params.companyName}
-${params.domain ? `Domain: ${params.domain}` : ''}
-
-Search for their careers page, job listings, or LinkedIn company page. Return JSON:
-{ "email": "address@domain.com or null", "reasoning": "where you found it" }`,
-    }],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools: ([
-      {
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 4,
-        allowed_domains: ['linkedin.com', 'crunchbase.com', 'wellfound.com', 'builtin.com', 'greenhouse.io', 'lever.co'],
-      },
-    ] as unknown) as Anthropic.Messages.Tool[],
-  })
-
-  const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
-  const finalText = textBlocks[textBlocks.length - 1]?.text ?? ''
-  const jsonStr = finalText.match(/\{[\s\S]*\}/)?.[0] ?? finalText
-  try {
-    const parsed = JSON.parse(jsonStr) as { email: string | null; reasoning: string }
-    return { email: parsed.email, reasoning: parsed.reasoning ?? '' }
-  } catch {
-    return { email: null, reasoning: 'Could not parse response' }
-  }
-}

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       }, { status: 429 })
     }
 
-    const enrichment = await enrichCompany({ name, domain, industry })
+    const enrichment = await enrichCompany({ name, domain, industry, userId: session.user.id })
     return NextResponse.json(enrichment)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed'

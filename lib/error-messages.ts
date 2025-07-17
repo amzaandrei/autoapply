@@ -25,7 +25,7 @@ export function friendlyError(raw: string): { title: string; description?: strin
   if (lower.includes('recipient address rejected') || lower.includes('550') || lower.includes('5.1.1')) {
     return {
       title: 'Email address not found',
-      description: 'Use Find Email to search for the real hiring address.',
+      description: 'The mailbox was rejected at delivery. Re-run discovery to find a fresh candidate.',
     }
   }
   if (lower.includes('message too large')) {

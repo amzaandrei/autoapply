@@ -8,6 +8,7 @@ import { AutocompleteInput } from '@/components/AutocompleteInput'
 import { MultiSelectInput } from '@/components/MultiSelectInput'
 import { RegionPicker } from '@/components/RegionPicker'
 import { SaveTemplateDialog } from '@/components/SaveTemplateDialog'
+import { EmailVerificationBadge } from '@/components/EmailVerificationBadge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -168,6 +169,8 @@ function DiscoverPage() {
     const c = existingCampaign.data
     if (c.name) setSelectedRoles(c.name.split(', ').filter(Boolean))
     if (c.jobTitle) setJobTitle(c.jobTitle)
+    if (c.industry) setIndustry(c.industry)
+    if (c.region) setRegion(c.region)
     setUseTemplate(c.useEmailTemplate)
     setHydrated(true)
   }
@@ -190,6 +193,8 @@ function DiscoverPage() {
     const d = lastDefaults.data
     if (d.selectedRoles.length > 0) setSelectedRoles(d.selectedRoles)
     if (d.jobTitle) setJobTitle(d.jobTitle)
+    if (d.industry) setIndustry(d.industry)
+    if (d.region) setRegion(d.region)
     setUseTemplate(d.useEmailTemplate)
     setAutoFilled(true)
   }
@@ -243,6 +248,20 @@ function DiscoverPage() {
       toast.error('Fill in at least a job title and region to search')
       return
     }
+    // Persist the current search criteria onto the campaign so templates
+    // saved later (and autopilot) can inherit them.
+    const existing = existingCampaign.data
+    if (
+      existing &&
+      (existing.jobTitle !== jobTitle || existing.industry !== (industry || null) || existing.region !== region)
+    ) {
+      updateCampaign.mutate({
+        id: campaignId,
+        jobTitle: jobTitle || undefined,
+        industry: industry || undefined,
+        region: region || undefined,
+      })
+    }
     setDiscovering(true)
     try {
       const res = await fetch('/api/companies/discover', {
@@ -250,8 +269,9 @@ function DiscoverPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ campaignId, jobTitle, industry: industry || 'Any industry', region, searchMode, source: dataSource }),
       })
-      const data = await res.json() as { companies?: DiscoveredCompany[]; error?: string }
+      const data = await res.json() as { companies?: DiscoveredCompany[]; droppedUnverified?: number; error?: string }
       if (!res.ok) throw new Error(data.error ?? 'Discovery failed')
+      const dropped = data.droppedUnverified ?? 0
       if (data.companies && data.companies.length > 0) {
         setDiscovered(data.companies)
         // Pre-select only new companies — skip those already contacted
@@ -261,11 +281,14 @@ function DiscoverPage() {
           .map((x) => x.i)
         setSelected(new Set(newCompanyIndices))
         const contactedCount = data.companies.filter((c) => c.alreadyContacted).length
+        const droppedSuffix = dropped > 0 ? ` — ${dropped} dropped (unverified email)` : ''
         if (contactedCount > 0) {
-          toast.success(`Found ${data.companies.length} companies — ${contactedCount} already contacted (greyed out)`)
+          toast.success(`Found ${data.companies.length} verified companies${droppedSuffix} — ${contactedCount} already contacted (greyed out)`)
         } else {
-          toast.success(`Found ${data.companies.length} matching companies`)
+          toast.success(`Found ${data.companies.length} verified companies${droppedSuffix}`)
         }
+      } else if (dropped > 0) {
+        toast.info(`Found ${dropped} candidates but none had a verifiable contact email. Try a different region or broader criteria.`)
       } else {
         toast.info("We're not finding matches — let's fix that. Try loosening your criteria.")
       }
@@ -357,7 +380,9 @@ function DiscoverPage() {
                     const t = template.data
                     createCampaign.mutate({
                       name: selectedRoles.join(', '),
-                      jobTitle: t?.jobTitle ?? undefined,
+                      jobTitle: t?.jobTitle || jobTitle || undefined,
+                      industry: t?.industry || industry || undefined,
+                      region: t?.region || region || undefined,
                       useEmailTemplate: t?.useEmailTemplate ?? profile.data?.useEmailTemplate ?? false,
                       attachCv: t?.attachCv,
                       followUpEnabled: t?.followUpEnabled,
@@ -656,7 +681,13 @@ function DiscoverPage() {
                         <div>
                           <p className="font-medium text-sm">{company.name}</p>
                           {company.contactEmail && (
-                            <p className="text-xs text-muted-foreground">{company.contactEmail}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <p className="text-xs text-muted-foreground">{company.contactEmail}</p>
+                              <EmailVerificationBadge
+                                status={company.contactEmailStatus}
+                                score={company.contactEmailScore}
+                              />
+                            </div>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
@@ -873,9 +904,9 @@ function DiscoverPage() {
           await saveTemplate.mutateAsync({
             name,
             selectedRoles,
-            jobTitle: jobTitle || undefined,
-            industry: industry || undefined,
-            region: region || undefined,
+            jobTitle: jobTitle || existingCampaign.data?.jobTitle || undefined,
+            industry: industry || existingCampaign.data?.industry || undefined,
+            region: region || existingCampaign.data?.region || undefined,
             searchMode,
             dataSource,
             useEmailTemplate: resolvedUseTemplate,

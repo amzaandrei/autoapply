@@ -4,31 +4,51 @@ import { useEffect, useRef, useState, Suspense } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { Check, Loader2, Sparkles } from 'lucide-react'
-import { FREE_TIER, PRO_TIER } from '@/lib/tier-limits'
+import { Check, Loader2, Sparkles, Zap, Rocket } from 'lucide-react'
+import {
+  FREE_TIER,
+  STARTER_TIER,
+  PRO_TIER,
+  POWER_TIER,
+  TIER_PRICES_USD,
+  limitsFor,
+  tierRank,
+  type Tier,
+  type TierLimits,
+} from '@/lib/tier-limits'
 
 interface UsageStats {
   emailsSentThisMonth: number
   aiGenerationsThisMonth: number
   discoveriesThisHour: number
+  hunterRequestsThisMonth: number
   campaigns: number
 }
 
 interface SubscriptionInfo {
-  tier: 'FREE' | 'PRO'
+  tier: Tier
   status: string
   currentPeriodEnd: string | null
   cancelAtPeriodEnd: boolean
 }
 
+type PaidPlan = 'STARTER' | 'PRO' | 'POWER'
+
+const PLAN_META: Record<Tier, { name: string; icon: React.ReactNode; limits: TierLimits }> = {
+  FREE: { name: 'Free', icon: null, limits: FREE_TIER },
+  STARTER: { name: 'Starter', icon: <Zap className="w-4 h-4 text-blue-500" />, limits: STARTER_TIER },
+  PRO: { name: 'Pro', icon: <Sparkles className="w-4 h-4 text-yellow-500" />, limits: PRO_TIER },
+  POWER: { name: 'Power', icon: <Rocket className="w-4 h-4 text-purple-500" />, limits: POWER_TIER },
+}
+
 function BillingContent() {
-  const { data: session, status, update } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [sub, setSub] = useState<SubscriptionInfo | null>(null)
   const [usage, setUsage] = useState<UsageStats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState<'checkout' | 'portal' | null>(null)
+  const [busy, setBusy] = useState<PaidPlan | 'portal' | null>(null)
   const bannerShown = useRef(false)
 
   useEffect(() => {
@@ -40,16 +60,12 @@ function BillingContent() {
     if (searchParams.get('success') === '1') {
       bannerShown.current = true
       ;(async () => {
-        // Pull latest subscription state from Stripe directly (no webhook wait).
         try {
           await fetch('/api/billing/sync', { method: 'POST' })
         } catch {
           // non-fatal — webhook will catch up eventually
         }
-        toast.success('Upgrade successful — welcome to Pro!')
-        // Force a full reload so NextAuth regenerates the JWT with the new
-        // tier on the next request. `update()` alone isn't enough — we want
-        // every server component to re-render against the new session.
+        toast.success('Upgrade successful — welcome aboard!')
         window.location.replace('/billing')
       })()
     } else if (searchParams.get('canceled') === '1') {
@@ -57,8 +73,6 @@ function BillingContent() {
       toast('Checkout canceled.')
       router.replace('/billing')
     }
-    // Intentionally NOT depending on `update` — its identity changes every time
-    // the session refreshes, which would otherwise cause an infinite loop here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, router])
 
@@ -84,10 +98,14 @@ function BillingContent() {
     }
   }, [session?.user?.id])
 
-  async function handleUpgrade() {
-    setBusy('checkout')
+  async function handleUpgrade(plan: PaidPlan) {
+    setBusy(plan)
     try {
-      const res = await fetch('/api/stripe/checkout', { method: 'POST' })
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Checkout failed')
       window.location.href = data.url
@@ -118,133 +136,111 @@ function BillingContent() {
     )
   }
 
-  const isPro = sub?.tier === 'PRO'
+  const currentTier: Tier = sub?.tier ?? 'FREE'
+  const currentLimits = limitsFor(currentTier)
+  const currentMeta = PLAN_META[currentTier]
+  const isPaid = currentTier !== 'FREE'
   const percent = (v: number, limit: number) =>
     Number.isFinite(limit) ? Math.min(100, Math.round((v / limit) * 100)) : 0
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-8">
-        <header>
-          <h1 className="text-3xl font-semibold">Billing & Plan</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your subscription and track usage.
-          </p>
-        </header>
+      <header>
+        <h1 className="text-3xl font-semibold">Billing & Plan</h1>
+        <p className="text-muted-foreground mt-1">
+          Manage your subscription and track usage.
+        </p>
+      </header>
 
-        {/* Current plan */}
-        <section className="border rounded-xl p-6 bg-card">
-          <div className="flex items-start justify-between flex-wrap gap-4">
-            <div>
-              <div className="text-sm text-muted-foreground">Current plan</div>
-              <div className="text-2xl font-semibold mt-1 flex items-center gap-2">
-                {isPro && <Sparkles className="w-5 h-5 text-yellow-500" />}
-                {sub?.tier ?? 'FREE'}
+      {/* Current plan */}
+      <section className="border rounded-xl p-6 bg-card">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <div className="text-sm text-muted-foreground">Current plan</div>
+            <div className="text-2xl font-semibold mt-1 flex items-center gap-2">
+              {currentMeta.icon}
+              {currentMeta.name}
+              <span className="text-base text-muted-foreground font-normal">
+                · ${TIER_PRICES_USD[currentTier]}/mo
+              </span>
+            </div>
+            {sub?.status && (
+              <div className="text-sm text-muted-foreground mt-1">
+                Status: <span className="font-medium">{sub.status}</span>
+                {sub.currentPeriodEnd && (
+                  <> · Renews {new Date(sub.currentPeriodEnd).toLocaleDateString()}</>
+                )}
               </div>
-              {sub?.status && (
-                <div className="text-sm text-muted-foreground mt-1">
-                  Status: <span className="font-medium">{sub.status}</span>
-                  {sub.currentPeriodEnd && (
-                    <> · Renews {new Date(sub.currentPeriodEnd).toLocaleDateString()}</>
-                  )}
-                </div>
-              )}
-              {sub?.cancelAtPeriodEnd && (
-                <div className="text-sm text-orange-600 mt-1">
-                  Cancels at period end.
-                </div>
-              )}
-            </div>
-            <div className="flex gap-2">
-              {!isPro && (
-                <button
-                  disabled={busy === 'checkout'}
-                  onClick={handleUpgrade}
-                  className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:opacity-90 disabled:opacity-60 flex items-center gap-2"
-                >
-                  {busy === 'checkout' && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Upgrade to Pro
-                </button>
-              )}
-              {isPro && (
-                <button
-                  disabled={busy === 'portal'}
-                  onClick={handlePortal}
-                  className="px-4 py-2 rounded-md border font-medium hover:bg-accent disabled:opacity-60 flex items-center gap-2"
-                >
-                  {busy === 'portal' && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Manage subscription
-                </button>
-              )}
-            </div>
+            )}
+            {sub?.cancelAtPeriodEnd && (
+              <div className="text-sm text-orange-600 mt-1">Cancels at period end.</div>
+            )}
           </div>
-        </section>
+          {isPaid && (
+            <button
+              disabled={busy === 'portal'}
+              onClick={handlePortal}
+              className="px-4 py-2 rounded-md border font-medium hover:bg-accent disabled:opacity-60 flex items-center gap-2"
+            >
+              {busy === 'portal' && <Loader2 className="w-4 h-4 animate-spin" />}
+              Manage subscription
+            </button>
+          )}
+        </div>
+      </section>
 
-        {/* Usage */}
-        {usage && (
-          <section className="border rounded-xl p-6 bg-card space-y-4">
-            <h2 className="font-semibold">Usage this month</h2>
-            <UsageBar
-              label="Emails sent"
-              value={usage.emailsSentThisMonth}
-              limit={isPro ? PRO_TIER.emailsPerMonth : FREE_TIER.emailsPerMonth}
-              percent={percent(
-                usage.emailsSentThisMonth,
-                isPro ? PRO_TIER.emailsPerMonth : FREE_TIER.emailsPerMonth,
-              )}
-            />
-            <UsageBar
-              label="AI generations"
-              value={usage.aiGenerationsThisMonth}
-              limit={
-                isPro ? PRO_TIER.aiGenerationsPerMonth : FREE_TIER.aiGenerationsPerMonth
-              }
-              percent={percent(
-                usage.aiGenerationsThisMonth,
-                isPro ? PRO_TIER.aiGenerationsPerMonth : FREE_TIER.aiGenerationsPerMonth,
-              )}
-            />
-            <UsageBar
-              label="Campaigns"
-              value={usage.campaigns}
-              limit={isPro ? PRO_TIER.maxCampaigns : FREE_TIER.maxCampaigns}
-              percent={percent(
-                usage.campaigns,
-                isPro ? PRO_TIER.maxCampaigns : FREE_TIER.maxCampaigns,
-              )}
-            />
-          </section>
-        )}
-
-        {/* Plan comparison */}
-        <section className="grid md:grid-cols-2 gap-4">
-          <PlanCard
-            name="Free"
-            price="$0"
-            current={!isPro}
-            features={[
-              `${FREE_TIER.maxCampaigns} campaigns`,
-              `${FREE_TIER.emailsPerMonth} emails/month`,
-              `${FREE_TIER.aiGenerationsPerMonth} AI generations/month`,
-              `${FREE_TIER.discoveriesPerHour} discoveries/hour`,
-              'Basic email templates',
-            ]}
+      {/* Usage */}
+      {usage && (
+        <section className="border rounded-xl p-6 bg-card space-y-4">
+          <h2 className="font-semibold">Usage this month</h2>
+          <UsageBar
+            label="Emails sent"
+            value={usage.emailsSentThisMonth}
+            limit={currentLimits.emailsPerMonth}
+            percent={percent(usage.emailsSentThisMonth, currentLimits.emailsPerMonth)}
           />
-          <PlanCard
-            name="Pro"
-            price="$19/month"
-            current={isPro}
-            highlighted
-            features={[
-              'Unlimited campaigns',
-              'Unlimited emails',
-              'Unlimited AI generations',
-              `${PRO_TIER.discoveriesPerHour} discoveries/hour`,
-              'A/B testing',
-              'Auto follow-ups',
-              'Priority support',
-            ]}
+          <UsageBar
+            label="AI generations"
+            value={usage.aiGenerationsThisMonth}
+            limit={currentLimits.aiGenerationsPerMonth}
+            percent={percent(usage.aiGenerationsThisMonth, currentLimits.aiGenerationsPerMonth)}
+          />
+          <UsageBar
+            label="Email verifications"
+            value={usage.hunterRequestsThisMonth}
+            limit={currentLimits.hunterRequestsPerMonth}
+            percent={percent(usage.hunterRequestsThisMonth, currentLimits.hunterRequestsPerMonth)}
+          />
+          <UsageBar
+            label="Campaigns"
+            value={usage.campaigns}
+            limit={currentLimits.maxCampaigns}
+            percent={percent(usage.campaigns, currentLimits.maxCampaigns)}
           />
         </section>
+      )}
+
+      {/* Plan switcher */}
+      <section>
+        <h2 className="text-lg font-semibold mb-3">Switch plan</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          {isPaid
+            ? 'Upgrade takes effect immediately. Downgrades apply at the next billing period via the billing portal.'
+            : 'Pick the plan that matches how hard you\'re job-hunting. Cancel anytime.'}
+        </p>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {(['FREE', 'STARTER', 'PRO', 'POWER'] as const).map((t) => (
+            <PlanCard
+              key={t}
+              tier={t}
+              currentTier={currentTier}
+              busyPlan={busy}
+              onUpgrade={handleUpgrade}
+              onPortal={handlePortal}
+            />
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
@@ -280,40 +276,119 @@ function UsageBar({
 }
 
 function PlanCard({
-  name,
-  price,
-  features,
-  current,
-  highlighted,
+  tier,
+  currentTier,
+  busyPlan,
+  onUpgrade,
+  onPortal,
 }: {
-  name: string
-  price: string
-  features: string[]
-  current?: boolean
-  highlighted?: boolean
+  tier: Tier
+  currentTier: Tier
+  busyPlan: PaidPlan | 'portal' | null
+  onUpgrade: (plan: PaidPlan) => void
+  onPortal: () => void
 }) {
+  const meta = PLAN_META[tier]
+  const price = TIER_PRICES_USD[tier]
+  const isCurrent = tier === currentTier
+  const isUpgrade = tierRank(tier) > tierRank(currentTier)
+  const isDowngrade = tierRank(tier) < tierRank(currentTier)
+  const isFree = tier === 'FREE'
+  const isPro = tier === 'PRO'
+  const isLoading = busyPlan === tier
+
   return (
     <div
-      className={`border rounded-xl p-6 ${highlighted ? 'border-primary bg-primary/5' : 'bg-card'}`}
+      className={`border rounded-xl p-5 flex flex-col bg-card ${
+        isPro ? 'border-primary/60 shadow-sm' : isCurrent ? 'border-foreground/20' : ''
+      }`}
     >
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-lg">{name}</h3>
-        {current && (
-          <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded">
-            Current
-          </span>
-        )}
+      <div className="flex-1">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {meta.icon}
+            <h3 className="font-semibold">{meta.name}</h3>
+          </div>
+          {isCurrent && (
+            <span className="text-xs bg-foreground/10 px-2 py-0.5 rounded font-medium">
+              Current
+            </span>
+          )}
+          {isPro && !isCurrent && (
+            <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded font-medium">
+              Popular
+            </span>
+          )}
+        </div>
+        <div className="mt-2 flex items-baseline gap-1">
+          <span className="text-3xl font-semibold">${price}</span>
+          <span className="text-sm text-muted-foreground">/month</span>
+        </div>
+        <ul className="mt-4 space-y-1.5 text-xs">
+          <Feat>{meta.limits.emailsPerMonth} emails/mo</Feat>
+          <Feat>{meta.limits.aiGenerationsPerMonth} AI gens/mo</Feat>
+          <Feat>{meta.limits.discoveriesPerMonth} discoveries/mo</Feat>
+          <Feat>{meta.limits.hunterRequestsPerMonth} verifications/mo</Feat>
+          {meta.limits.followupsEnabled && (
+            <Feat>Auto follow-ups ({meta.limits.maxFollowUpSequences}×)</Feat>
+          )}
+          {meta.limits.abTestingEnabled && <Feat>A/B testing</Feat>}
+          {meta.limits.cvTailoringEnabled && <Feat>CV tailoring</Feat>}
+          {meta.limits.prioritySupport && <Feat>Priority support</Feat>}
+        </ul>
       </div>
-      <div className="text-3xl font-bold mt-2">{price}</div>
-      <ul className="mt-4 space-y-2 text-sm">
-        {features.map((f) => (
-          <li key={f} className="flex items-start gap-2">
-            <Check className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
+
+      <div className="mt-5">
+        {isCurrent ? (
+          <button
+            disabled
+            className="w-full px-3 py-2 rounded-md border text-sm font-medium opacity-60 cursor-not-allowed"
+          >
+            Current plan
+          </button>
+        ) : isFree ? (
+          <button
+            disabled={busyPlan === 'portal'}
+            onClick={onPortal}
+            className="w-full px-3 py-2 rounded-md border text-sm font-medium hover:bg-accent disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {busyPlan === 'portal' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Downgrade
+          </button>
+        ) : isUpgrade ? (
+          <button
+            disabled={isLoading}
+            onClick={() => onUpgrade(tier as PaidPlan)}
+            className={`w-full px-3 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60 ${
+              isPro
+                ? 'bg-primary text-primary-foreground hover:opacity-90'
+                : 'border hover:bg-accent'
+            }`}
+          >
+            {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Upgrade to {meta.name}
+          </button>
+        ) : isDowngrade ? (
+          <button
+            disabled={busyPlan === 'portal'}
+            onClick={onPortal}
+            className="w-full px-3 py-2 rounded-md border text-sm font-medium hover:bg-accent disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {busyPlan === 'portal' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Downgrade
+          </button>
+        ) : null}
+      </div>
     </div>
+  )
+}
+
+function Feat({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-1.5">
+      <Check className="w-3.5 h-3.5 mt-0.5 text-green-600 flex-shrink-0" />
+      <span>{children}</span>
+    </li>
   )
 }
 

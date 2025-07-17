@@ -25,9 +25,12 @@ function buildCsp(nonce: string): string {
     `img-src 'self' blob: data: https://*.mapbox.com https://api.mapbox.com https://*.googleusercontent.com https://*.gravatar.com`,
     `font-src 'self' data: https://fonts.gstatic.com`,
     `connect-src 'self' ws: wss: https://*.mapbox.com https://api.mapbox.com https://events.mapbox.com https://api.stripe.com https://*.posthog.com https://*.sentry.io https://api.anthropic.com`,
-    `frame-src https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com`,
+    // frame-src: 'self' + blob:/data: for embedded CV PDF previews,
+    // plus Stripe Checkout/Elements iframes.
+    `frame-src 'self' blob: data: https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com`,
     `worker-src 'self' blob:`,
-    `object-src 'none'`,
+    // object-src covers <object>/<embed> PDF fallbacks on some browsers
+    `object-src 'self' blob: data:`,
     `base-uri 'self'`,
     `form-action 'self' https://checkout.stripe.com`,
     `frame-ancestors 'none'`,

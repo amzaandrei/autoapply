@@ -84,6 +84,9 @@ function GeneratePage() {
     }
   }
 
+  const generatedCount = results.filter((r) => !r.error).length
+  const failedCount = results.filter((r) => r.error).length
+
   return (
     <div className="min-h-screen bg-background">
       <PageTransition>
@@ -128,7 +131,7 @@ function GeneratePage() {
               </div>
             )}
 
-            {/* Generate button */}
+            {/* Primary action */}
             {!done ? (
               <Button
                 className="w-full"
@@ -149,16 +152,19 @@ function GeneratePage() {
                 )}
               </Button>
             ) : (
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={() => router.push(`/review?campaignId=${campaignId}`)}
-              >
-                Review Emails <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
+              generatedCount > 0 && (
+                <Button
+                  className="w-full"
+                  size="lg"
+                  onClick={() => router.push(`/review?campaignId=${campaignId}`)}
+                >
+                  Review {generatedCount} {generatedCount === 1 ? 'Email' : 'Emails'}
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              )
             )}
 
-            {/* Results */}
+            {/* Results — one row per company */}
             {results.length > 0 && (
               <div className="space-y-2">
                 {results.map((r) => (
@@ -171,7 +177,7 @@ function GeneratePage() {
                     ) : (
                       <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
                     )}
-                    <span className="flex-1">{r.companyName}</span>
+                    <span className="flex-1 truncate">{r.companyName}</span>
                     {r.error ? (
                       <Badge variant="destructive" className="text-xs">{r.error}</Badge>
                     ) : (
@@ -181,8 +187,7 @@ function GeneratePage() {
                 ))}
                 {done && (
                   <div className="text-sm text-center text-muted-foreground pt-2">
-                    {results.filter((r) => !r.error).length} generated ·{' '}
-                    {results.filter((r) => r.error).length} failed
+                    {generatedCount} generated · {failedCount} failed
                   </div>
                 )}
               </div>

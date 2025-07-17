@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { stripe, requireWebhookSecret } from '@/lib/stripe'
+import { stripe, requireWebhookSecret, planForPriceId } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 import { track } from '@/lib/analytics'
 import * as Sentry from '@sentry/nextjs'
+import type { Tier } from '@/lib/tier-limits'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -56,8 +57,11 @@ async function applySubscriptionUpdate(s: Stripe.Subscription): Promise<void> {
     return
   }
   const priceId = s.items.data[0]?.price?.id
-  const tier: 'FREE' | 'PRO' =
-    s.status === 'active' || s.status === 'trialing' ? 'PRO' : 'FREE'
+  const active = s.status === 'active' || s.status === 'trialing'
+  // Map the Stripe price id to our tier. Unknown price → fall back to PRO for
+  // backwards-compatibility with subscriptions created before STARTER/POWER existed.
+  const resolvedPlan = planForPriceId(priceId)
+  const tier: Tier = active ? (resolvedPlan ?? 'PRO') : 'FREE'
 
   // Stripe's ts types report current_period_* on subscription.items, but the
   // classic top-level fields are still populated for single-item subs.
@@ -90,8 +94,8 @@ async function applySubscriptionUpdate(s: Stripe.Subscription): Promise<void> {
     },
   })
 
-  if (tier === 'PRO') track(userId, 'upgraded_to_pro', { priceId })
-  else track(userId, 'downgraded_to_free')
+  if (tier === 'FREE') track(userId, 'downgraded_to_free')
+  else track(userId, 'upgraded_to_paid', { plan: tier, priceId })
 }
 
 export async function POST(req: NextRequest) {

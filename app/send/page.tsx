@@ -31,12 +31,11 @@ import {
   Eye,
   MessageSquare,
   RefreshCw,
-  Search,
-  Sparkles,
 } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
 import { PageTransition } from '@/components/Motion'
 import { friendlyError } from '@/lib/error-messages'
+import { EmailVerificationBadge } from '@/components/EmailVerificationBadge'
 import Link from 'next/link'
 
 interface SendResult {
@@ -59,7 +58,6 @@ function SendPage() {
   const [sendError, setSendError] = useState<string | null>(null)
   const [checkingReplies, setCheckingReplies] = useState(false)
   const [processingFollowUps, setProcessingFollowUps] = useState(false)
-  const [findingEmailFor, setFindingEmailFor] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null)
 
   const gmailStatus = trpc.gmail.status.useQuery()
@@ -214,37 +212,6 @@ function SendPage() {
     }
   }
 
-  const handleFindEmail = async (companyId: string, companyName: string) => {
-    setFindingEmailFor(companyId)
-    try {
-      const res = await fetch('/api/companies/find-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ companyId }),
-      })
-      const data = await res.json() as { found: boolean; email?: string; reasoning?: string; error?: string }
-      if (!res.ok) throw new Error(data.error ?? 'Failed')
-      if (data.found && data.email) {
-        toast.success(`Found: ${data.email} for ${companyName}`)
-        emails.refetch()
-        sentEmails.refetch()
-        openedEmails.refetch()
-        repliedEmails.refetch()
-        bouncedEmails.refetch()
-      } else {
-        toast.info(`No better email found for ${companyName}`, {
-          description: data.reasoning,
-        })
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to find email'
-      const f = friendlyError(msg)
-      toast.error(f.title, { description: f.description })
-    } finally {
-      setFindingEmailFor(null)
-    }
-  }
-
   const readyEmails = emails.data ?? []
   const sendableReady = readyEmails.filter((e) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -340,10 +307,18 @@ function SendPage() {
                       >
                         <div className="flex-1 min-w-0">
                           <p className="font-medium">{email.company.name}</p>
-                          <p className={`text-xs ${needsEmail ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
-                            To: {email.company.contactEmail ?? '(no email found)'}
-                            {needsEmail && ' — will be skipped'}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className={`text-xs ${needsEmail ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}>
+                              To: {email.company.contactEmail ?? '(no email found)'}
+                              {needsEmail && ' — will be skipped'}
+                            </p>
+                            {!needsEmail && (
+                              <EmailVerificationBadge
+                                status={email.company.contactEmailStatus}
+                                score={email.company.contactEmailScore}
+                              />
+                            )}
+                          </div>
                           {hasCvPdf && campaign.data?.attachCv && !needsEmail && (
                             <Badge variant="secondary" className="mt-1 text-xs">
                               📎 CV attached
@@ -351,21 +326,6 @@ function SendPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {needsEmail && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void handleFindEmail(email.company.id, email.company.name)}
-                              disabled={findingEmailFor === email.company.id}
-                              title="AI searches the web for the real hiring email"
-                            >
-                              {findingEmailFor === email.company.id ? (
-                                <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Searching...</>
-                              ) : (
-                                <><Sparkles className="h-3.5 w-3.5 mr-1" /> Find Email</>
-                              )}
-                            </Button>
-                          )}
                           <div className="text-right text-xs text-muted-foreground max-w-[200px] truncate">
                             {email.subject}
                           </div>
@@ -501,16 +461,17 @@ function SendPage() {
             </Card>
           )}
 
-          {/* Bounced — needs email recovery */}
+          {/* Bounced — rare now that Hunter verifies every email pre-send */}
           {(bouncedEmails.data?.length ?? 0) > 0 && (
             <Card className="border-amber-500/50">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 text-amber-500" />
-                  Bounced ({bouncedEmails.data?.length}) — needs new email
+                  Bounced ({bouncedEmails.data?.length})
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">
-                  These emails bounced. Click <strong>Find Email</strong> to search for the real hiring address and retry.
+                  Gmail reported these as undeliverable despite Hunter verification. Re-run discovery
+                  to find fresh candidates.
                 </p>
               </CardHeader>
               <CardContent>
@@ -523,18 +484,6 @@ function SendPage() {
                           {email.company.contactEmail ?? '(no email)'}
                         </p>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleFindEmail(email.company.id, email.company.name)}
-                        disabled={findingEmailFor === email.company.id}
-                      >
-                        {findingEmailFor === email.company.id ? (
-                          <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Searching...</>
-                        ) : (
-                          <><Sparkles className="h-3.5 w-3.5 mr-1" /> Find Email</>
-                        )}
-                      </Button>
                     </div>
                   ))}
                 </div>
@@ -605,7 +554,7 @@ function SendPage() {
               <DialogDescription>
                 We&apos;ll send a tailored email to {sendableReady.length} compan{sendableReady.length !== 1 ? 'ies' : 'y'}.
                 {readyEmails.length - sendableReady.length > 0 && (
-                  <> The other {readyEmails.length - sendableReady.length} without valid emails will be skipped — use <strong>Find Email</strong> to recover them.</>
+                  <> The other {readyEmails.length - sendableReady.length} without valid emails will be skipped.</>
                 )}
                 {' '}This action cannot be undone.
               </DialogDescription>

@@ -6,8 +6,12 @@ import { prisma } from './prisma'
 import { TRPCError } from '@trpc/server'
 import {
   FREE_TIER,
+  STARTER_TIER,
   PRO_TIER,
+  POWER_TIER,
   limitsFor,
+  tierRank,
+  hasTierAtLeast,
   type Tier,
   type TierLimits,
   type UsageAction,
@@ -15,7 +19,7 @@ import {
 
 // Re-export constants so existing `import { FREE_TIER } from '@/lib/entitlements'`
 // calls keep working on the server side.
-export { FREE_TIER, PRO_TIER, limitsFor }
+export { FREE_TIER, STARTER_TIER, PRO_TIER, POWER_TIER, limitsFor, tierRank, hasTierAtLeast }
 export type { Tier, TierLimits, UsageAction }
 
 function currentMonth(): string {
@@ -38,8 +42,10 @@ export async function getTier(userId: string): Promise<Tier> {
     select: { tier: true, status: true },
   })
   if (!sub) return 'FREE'
-  if (sub.tier === 'PRO' && (sub.status === 'ACTIVE' || sub.status === 'TRIALING')) return 'PRO'
-  return 'FREE'
+  const active = sub.status === 'ACTIVE' || sub.status === 'TRIALING'
+  if (!active) return 'FREE'
+  // Prisma enum values map 1:1 to our Tier union.
+  return sub.tier as Tier
 }
 
 export async function getEntitlements(userId: string): Promise<TierLimits & { tier: Tier }> {
@@ -58,6 +64,11 @@ function limitForAction(tier: Tier, action: UsageAction): number {
       return l.discoveriesPerHour
     case 'follow_up':
       return l.followupsEnabled ? Number.POSITIVE_INFINITY : 0
+    case 'hunter_request':
+      return l.hunterRequestsPerMonth
+    case 'ai_input_tokens':
+    case 'ai_output_tokens':
+      return Number.POSITIVE_INFINITY
   }
 }
 
@@ -103,10 +114,20 @@ export async function incrementUsage(
 
 export async function requirePro(userId: string, featureLabel = 'This feature'): Promise<void> {
   const tier = await getTier(userId)
-  if (tier !== 'PRO') {
+  if (!hasTierAtLeast(tier, 'PRO')) {
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: `${featureLabel} requires a Pro subscription.`,
+    })
+  }
+}
+
+export async function requirePaid(userId: string, featureLabel = 'This feature'): Promise<void> {
+  const tier = await getTier(userId)
+  if (!hasTierAtLeast(tier, 'STARTER')) {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message: `${featureLabel} requires a paid plan (Starter, Pro, or Power).`,
     })
   }
 }
@@ -115,9 +136,10 @@ export async function getUsage(userId: string): Promise<{
   emailsSentThisMonth: number
   aiGenerationsThisMonth: number
   discoveriesThisHour: number
+  hunterRequestsThisMonth: number
   campaigns: number
 }> {
-  const [emailsRow, aiRow, discRow, campaigns] = await Promise.all([
+  const [emailsRow, aiRow, discRow, hunterRow, campaigns] = await Promise.all([
     prisma.usageCounter.findUnique({
       where: { userId_action_period: { userId, action: 'email_sent', period: currentMonth() } },
       select: { count: true },
@@ -130,12 +152,17 @@ export async function getUsage(userId: string): Promise<{
       where: { userId_action_period: { userId, action: 'discovery', period: currentHour() } },
       select: { count: true },
     }),
+    prisma.usageCounter.findUnique({
+      where: { userId_action_period: { userId, action: 'hunter_request', period: currentMonth() } },
+      select: { count: true },
+    }),
     prisma.campaign.count({ where: { userId } }),
   ])
   return {
     emailsSentThisMonth: emailsRow?.count ?? 0,
     aiGenerationsThisMonth: aiRow?.count ?? 0,
     discoveriesThisHour: discRow?.count ?? 0,
+    hunterRequestsThisMonth: hunterRow?.count ?? 0,
     campaigns,
   }
 }

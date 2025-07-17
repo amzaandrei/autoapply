@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
           companyName: email.company.name,
           to: '(no email)',
           status: 'skipped',
-          error: 'No contact email — try Find Email',
+          error: 'No contact email',
         })
         continue
       }
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
           companyName: email.company.name,
           to,
           status: 'skipped',
-          error: 'Invalid email format — try Find Email',
+          error: 'Invalid email format',
         })
         continue
       }
