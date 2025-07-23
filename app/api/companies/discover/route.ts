@@ -4,11 +4,13 @@ import { prisma } from '@/lib/prisma'
 import { discoverCompanies, type CompanyResult } from '@/lib/ai'
 import { searchAllJobAPIs } from '@/lib/job-apis'
 import { findAndVerifyForDiscovery } from '@/lib/contact-resolver'
+import { hunterEnrichCompany, type HunterCompanyEnrichment } from '@/lib/hunter'
 import { estimateSalary } from '@/lib/salary-estimator'
 import { rateLimit } from '@/lib/rate-limit'
 import { geocodeForwardBatch } from '@/lib/geocode-cache'
 import { addOpportunityLocations, invalidateAppliedCache } from '@/server/routers/regions'
-import { checkQuota, incrementUsage } from '@/lib/entitlements'
+import { checkQuota, incrementUsage, getTier } from '@/lib/entitlements'
+import { hasTierAtLeast } from '@/lib/tier-limits'
 import { track } from '@/lib/analytics'
 
 export async function POST(request: NextRequest) {
@@ -130,6 +132,7 @@ export async function POST(request: NextRequest) {
         companyName: c.name,
         domain: c.domain,
         existingEmail: c.contactEmail,
+        contactName: c.contactName,
         userId: session.user.id,
       })
       // Worst case: 1 domain search (if email missing) + 1 verify
@@ -143,6 +146,26 @@ export async function POST(request: NextRequest) {
     }
     const droppedUnverified = beforeVerify - verifiedCompanies.length
     companies = verifiedCompanies
+
+    // Hunter Company Enrichment — paid tiers only. Runs against a SEPARATE
+    // Hunter quota (enrichment credits), so we check it independently.
+    // Enriched firmographics (year founded, country, tech stack, logo)
+    // dramatically sharpen the personalization in `generateEmail`.
+    const enrichmentByDomain = new Map<string, HunterCompanyEnrichment>()
+    const tier = await getTier(session.user.id)
+    if (hasTierAtLeast(tier, 'STARTER') && companies.length > 0) {
+      const enrichQuota = await checkQuota(session.user.id, 'hunter_enrichment')
+      let enrichRemaining = enrichQuota.allowed ? enrichQuota.remaining : 0
+      for (const c of companies) {
+        if (enrichRemaining <= 0) break
+        const domain = c.domain
+        if (!domain) continue
+        if (enrichmentByDomain.has(domain)) continue
+        const enrichment = await hunterEnrichCompany({ domain, userId: session.user.id })
+        enrichRemaining -= 1
+        if (enrichment) enrichmentByDomain.set(domain, enrichment)
+      }
+    }
 
     // Tag companies that were already contacted across any campaign
     const previouslySent = await prisma.generatedEmail.findMany({
@@ -189,19 +212,28 @@ export async function POST(request: NextRequest) {
       await prisma.company.createMany({
         data: toSave.map((c) => {
           const geo = lookupGeo(c.location) ?? lookupGeo(region)
+          const enrich = c.domain ? enrichmentByDomain.get(c.domain) : undefined
           return {
             campaignId,
             name: c.name,
             domain: c.domain || undefined,
-            industry: c.industry || undefined,
-            size: c.size || undefined,
+            // Prefer Hunter's authoritative firmographics when present; fall
+            // back to the AI-guessed values.
+            industry: enrich?.industry ?? c.industry ?? undefined,
+            size: enrich?.employeeCount ?? c.size ?? undefined,
             description: `${c.description}\n\nMatch reason: ${c.matchReason}`,
             contactEmail: c.contactEmail || undefined,
             contactName: c.contactName || undefined,
-            linkedIn: c.linkedIn || undefined,
+            linkedIn: enrich?.linkedIn ?? c.linkedIn ?? undefined,
             latitude: geo?.lat ?? null,
             longitude: geo?.lng ?? null,
             region: geo?.shortName ?? null,
+            yearFounded: enrich?.foundedYear ?? undefined,
+            country: enrich?.country ?? undefined,
+            locality: enrich?.locality ?? undefined,
+            logo: enrich?.logo ?? undefined,
+            techStack: enrich?.techStack ?? [],
+            enrichedAt: enrich ? new Date() : undefined,
             status: 'PENDING' as const,
           }
         }),

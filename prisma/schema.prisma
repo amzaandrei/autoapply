@@ -186,6 +186,14 @@ model Company {
   contactEmailStatus   String?  // 'valid' | 'accept_all' | 'webmail' | 'invalid' | 'disposable' | 'unknown' | 'error'
   contactEmailScore    Int?     // 0-100 Hunter score; null if not checked
   contactEmailVerifiedAt DateTime?
+  // Hunter Company Enrichment — firmographics. Populated on discovery for
+  // paid tiers. Null fields mean the field wasn't in Hunter's dataset.
+  yearFounded   Int?
+  country       String?
+  locality      String?
+  logo          String?
+  techStack     String[]      @default([])
+  enrichedAt    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 

@@ -11,11 +11,12 @@ import type { CampaignTemplate } from '@prisma/client'
 import { prisma } from './prisma'
 import { discoverCompanies, generateEmail, type EmailTone, type CompanyResult } from './ai'
 import { searchAllJobAPIs } from './job-apis'
-import { resolveContactEmail, type ContactVerdict } from './contact-resolver'
+import { resolveContactEmail, type ContactVerdict, findAndVerifyForDiscovery } from './contact-resolver'
 import { estimateSalary } from './salary-estimator'
 import { geocodeForwardBatch } from './geocode-cache'
 import { sendGmailEmail, refreshAccessToken } from './gmail'
-import { getTier, checkQuota, incrementUsage } from './entitlements'
+import { getTier, checkQuota, incrementUsage, hasTierAtLeast } from './entitlements'
+import { hunterEnrichCompany } from './hunter'
 import { logger } from './logger'
 
 export type AutopilotFrequency = 'daily' | 'every2days' | 'weekly'
@@ -154,7 +155,7 @@ export async function runAutopilotForTemplate(templateId: string): Promise<Autop
     if (!template.autopilotAcceptedAt) return await skip('no_consent')
 
     const tier = await getTier(template.userId)
-    if (tier !== 'PRO') return await skip('not_pro')
+    if (!hasTierAtLeast(tier, 'PRO')) return await skip('not_pro')
 
     if (!template.jobTitle || !template.region) return await skip('missing_search_params')
 
@@ -323,24 +324,102 @@ export async function runAutopilotForTemplate(templateId: string): Promise<Autop
       }
     }
 
-    // 11. Verify deliverability for every persisted company. `resolveContactEmail`
-    // writes its result back to the Company row so generation can simply skip
-    // anything that isn't `verified_email`. Sequential on purpose — Hunter has a
-    // low rate limit and we don't want to blow the daily budget in parallel.
+    // 11. Find + verify a real hiring email for every persisted company. The
+    // AI's guess (`careers@domain`) is often wrong — Hunter's SMTP probe
+    // regularly returns `invalid`. `findAndVerifyForDiscovery` uses Hunter's
+    // domain-search to find an actually-deliverable address (real mailbox in
+    // Hunter's dataset) and only returns it if SMTP-verified. If found, we
+    // overwrite the Company row's contactEmail so downstream send uses the
+    // real address. Sequential on purpose — Hunter rate-limits aggressively.
     const verdictByCompanyId = new Map<string, ContactVerdict>()
     for (const [, companyId] of companyNameToId) {
       const row = await prisma.company.findUnique({
         where: { id: companyId },
         select: {
           id: true,
+          name: true,
+          domain: true,
           contactEmail: true,
+          contactName: true,
           contactEmailStatus: true,
           contactEmailScore: true,
           contactEmailVerifiedAt: true,
         },
       })
       if (!row) continue
-      verdictByCompanyId.set(companyId, await resolveContactEmail(row, template.userId))
+
+      const found = await findAndVerifyForDiscovery({
+        companyName: row.name,
+        domain: row.domain,
+        existingEmail: row.contactEmail,
+        contactName: row.contactName,
+        userId: template.userId,
+      })
+      if (found) {
+        await prisma.company.update({
+          where: { id: companyId },
+          data: {
+            contactEmail: found.email,
+            domain: row.domain || found.resolvedDomain || undefined,
+            contactEmailStatus: found.status,
+            contactEmailScore: found.score,
+            contactEmailVerifiedAt: new Date(),
+          },
+        })
+        verdictByCompanyId.set(companyId, {
+          kind: 'verified_email',
+          email: found.email,
+          status: found.status,
+          score: found.score,
+          source: 'hunter',
+        })
+      } else {
+        // No verifiable email — fall back to verifying the AI's guess so the
+        // Company row still gets a status set, and mark as skip-worthy.
+        verdictByCompanyId.set(companyId, await resolveContactEmail(row, template.userId))
+      }
+    }
+
+    // 11b. Hunter Company Enrichment — autopilot is PRO/POWER only so the
+    // tier check is implicit. Enrichment sharpens the personalization in
+    // `generateEmail` (founded year, country, tech stack). Separate quota
+    // pool (`hunter_enrichment`), stop early if we run out.
+    const enrichmentByCompanyId = new Map<string, {
+      yearFounded: number | null
+      country: string | null
+      techStack: string[]
+    }>()
+    const enrichQuota = await checkQuota(template.userId, 'hunter_enrichment')
+    let enrichRemaining = enrichQuota.allowed ? enrichQuota.remaining : 0
+    const seenDomains = new Set<string>()
+    for (const c of batch) {
+      if (enrichRemaining <= 0) break
+      const companyId = companyNameToId.get(c.name)
+      if (!companyId || !c.domain) continue
+      if (seenDomains.has(c.domain)) continue
+      seenDomains.add(c.domain)
+      const enrichment = await hunterEnrichCompany({ domain: c.domain, userId: template.userId })
+      enrichRemaining -= 1
+      if (!enrichment) continue
+      enrichmentByCompanyId.set(companyId, {
+        yearFounded: enrichment.foundedYear,
+        country: enrichment.country,
+        techStack: enrichment.techStack,
+      })
+      await prisma.company.update({
+        where: { id: companyId },
+        data: {
+          industry: enrichment.industry ?? undefined,
+          size: enrichment.employeeCount ?? undefined,
+          linkedIn: enrichment.linkedIn ?? undefined,
+          yearFounded: enrichment.foundedYear ?? undefined,
+          country: enrichment.country ?? undefined,
+          locality: enrichment.locality ?? undefined,
+          logo: enrichment.logo ?? undefined,
+          techStack: enrichment.techStack,
+          enrichedAt: new Date(),
+        },
+      })
     }
 
     // 12. Generate + (optionally) send
@@ -381,6 +460,7 @@ export async function runAutopilotForTemplate(templateId: string): Promise<Autop
       }
 
       try {
+        const enrich = enrichmentByCompanyId.get(companyId)
         const email = await generateEmail({
           cvText: profile.cvText,
           jobTitle: template.jobTitle!,
@@ -389,6 +469,9 @@ export async function runAutopilotForTemplate(templateId: string): Promise<Autop
           companyDescription: c.description ?? null,
           companySize: c.size ?? null,
           contactName: c.contactName ?? null,
+          yearFounded: enrich?.yearFounded ?? null,
+          country: enrich?.country ?? null,
+          techStack: enrich?.techStack ?? null,
           skills: profile.skills ?? [],
           tone,
           userId: template.userId,
@@ -396,14 +479,16 @@ export async function runAutopilotForTemplate(templateId: string): Promise<Autop
         const body = email.body + signatureBlock
 
         if (template.autopilotRequireApproval) {
-          // Drop into user's inbox as a READY draft — they click send from dashboard
+          // Approval-required mode: land in the user's Review queue as DRAFT so
+          // the Approve button is shown. READY here means "already approved" —
+          // using it would skip the review step the user explicitly opted into.
           await prisma.generatedEmail.create({
             data: {
               companyId,
               campaignId,
               subject: email.subject,
               body,
-              status: 'READY',
+              status: 'DRAFT',
             },
           })
           generated += 1
@@ -419,9 +504,12 @@ export async function runAutopilotForTemplate(templateId: string): Promise<Autop
             },
           })
           try {
+            // Send to the verified address from Hunter — may differ from the
+            // AI's original guess if `findAndVerifyForDiscovery` resolved a
+            // better hiring email.
             const { messageId, threadId } = await sendGmailEmail({
               from: fromHeader,
-              to: c.contactEmail,
+              to: verdict.email,
               subject: email.subject,
               body,
               accessToken: accessToken!,
@@ -448,7 +536,7 @@ export async function runAutopilotForTemplate(templateId: string): Promise<Autop
             failed += 1
             await prisma.generatedEmail.update({
               where: { id: emailRow.id },
-              data: { status: 'READY' }, // fall back to draft so user can retry
+              data: { status: 'DRAFT' }, // fall back so user can re-approve + retry
             })
           }
         }

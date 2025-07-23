@@ -18,6 +18,9 @@ export interface TierLimits {
   discoveriesPerMonth: number
   companiesPerDiscovery: number
   hunterRequestsPerMonth: number
+  // Hunter Company Enrichment uses a separate quota pool, so we cap it
+  // independently. 0 disables enrichment for that tier (FREE).
+  hunterEnrichmentsPerMonth: number
   followupsEnabled: boolean
   maxFollowUpSequences: number
   abTestingEnabled: boolean
@@ -33,6 +36,7 @@ export const FREE_TIER: TierLimits = {
   discoveriesPerMonth: 5,
   companiesPerDiscovery: 10,
   hunterRequestsPerMonth: 10,
+  hunterEnrichmentsPerMonth: 0,
   followupsEnabled: false,
   maxFollowUpSequences: 0,
   abTestingEnabled: false,
@@ -48,6 +52,7 @@ export const STARTER_TIER: TierLimits = {
   discoveriesPerMonth: 15,
   companiesPerDiscovery: 20,
   hunterRequestsPerMonth: 50,
+  hunterEnrichmentsPerMonth: 30,
   followupsEnabled: true,
   maxFollowUpSequences: 1,
   abTestingEnabled: false,
@@ -63,6 +68,7 @@ export const PRO_TIER: TierLimits = {
   discoveriesPerMonth: 40,
   companiesPerDiscovery: 25,
   hunterRequestsPerMonth: 150,
+  hunterEnrichmentsPerMonth: 100,
   followupsEnabled: true,
   maxFollowUpSequences: 3,
   abTestingEnabled: true,
@@ -78,6 +84,7 @@ export const POWER_TIER: TierLimits = {
   discoveriesPerMonth: 100,
   companiesPerDiscovery: 40,
   hunterRequestsPerMonth: 500,
+  hunterEnrichmentsPerMonth: 300,
   followupsEnabled: true,
   maxFollowUpSequences: 5,
   abTestingEnabled: true,
@@ -98,6 +105,7 @@ export type UsageAction =
   | 'discovery'
   | 'follow_up'
   | 'hunter_request'
+  | 'hunter_enrichment'
   | 'ai_input_tokens'
   | 'ai_output_tokens'
 

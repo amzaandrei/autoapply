@@ -66,6 +66,8 @@ function limitForAction(tier: Tier, action: UsageAction): number {
       return l.followupsEnabled ? Number.POSITIVE_INFINITY : 0
     case 'hunter_request':
       return l.hunterRequestsPerMonth
+    case 'hunter_enrichment':
+      return l.hunterEnrichmentsPerMonth
     case 'ai_input_tokens':
     case 'ai_output_tokens':
       return Number.POSITIVE_INFINITY

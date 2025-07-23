@@ -15,7 +15,13 @@
  */
 import type { Company } from '@prisma/client'
 import { prisma } from './prisma'
-import { hunterVerifyEmail, hunterFindHiringEmail, hasHunter, type HunterVerifyStatus } from './hunter'
+import {
+  hunterVerifyEmail,
+  hunterFindHiringEmail,
+  hunterEmailFinder,
+  hasHunter,
+  type HunterVerifyStatus,
+} from './hunter'
 import { validateEmail } from './email-validator'
 import { ensureCostBudget, recordCost, CostCapExceeded } from './cost-guard'
 
@@ -189,13 +195,37 @@ export async function findAndVerifyForDiscovery(input: {
   companyName: string
   domain?: string | null
   existingEmail?: string | null
+  contactName?: string | null
   userId?: string | null
 }): Promise<DiscoveryVerification | null> {
   let email = input.existingEmail?.trim() || null
   let domain = input.domain ?? null
 
-  // If the AI/jobs source didn't give us an email, ask Hunter. Hunter can
-  // resolve a company name to its domain server-side, so no AI call is needed.
+  // If we have a contact name, Email Finder beats Domain Search dramatically —
+  // "Hi Jane," emails reply ~3-5× more than careers@. Try it first when the
+  // name is populated. Costs one Hunter request either way.
+  if (!email && hasHunter()) {
+    const parts = input.contactName?.trim().split(/\s+/) ?? []
+    if (parts.length >= 2) {
+      const firstName = parts[0]
+      const lastName = parts.slice(1).join(' ')
+      const found = await hunterEmailFinder({
+        domain,
+        company: input.companyName,
+        firstName,
+        lastName,
+        userId: input.userId,
+      })
+      // Only accept Email Finder hits above a reasonable confidence floor —
+      // otherwise fall through to the hiring-email search below.
+      if (found && found.score >= 50) {
+        email = found.email
+        domain = found.domain ?? domain
+      }
+    }
+  }
+
+  // Fall back to hunting for a generic hiring inbox (careers@, jobs@, …).
   if (!email && hasHunter()) {
     const found = await hunterFindHiringEmail({ domain, companyName: input.companyName, userId: input.userId })
     if (found) {

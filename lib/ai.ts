@@ -87,6 +87,11 @@ export async function generateEmail(params: {
    * experience" or "don't mention salary". Honoured verbatim by the model.
    */
   hint?: string | null
+  // Hunter-enriched firmographics, if available. Feeding these to the model
+  // produces much tighter personalization than AI-guessed values alone.
+  yearFounded?: number | null
+  country?: string | null
+  techStack?: string[] | null
   userId?: string | null
 }): Promise<GeneratedEmailResult> {
   const cvSummary = params.cvText.slice(0, 3000)
@@ -94,6 +99,9 @@ export async function generateEmail(params: {
   const tone = params.tone ?? 'balanced'
   const { wordLimit, structure } = TONE_PROMPTS[tone]
   const hint = params.hint?.trim().slice(0, 500) || null
+  const techStack = params.techStack && params.techStack.length > 0
+    ? params.techStack.slice(0, 8).join(', ')
+    : null
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
@@ -118,6 +126,9 @@ Target Role: ${params.jobTitle}
 Company: ${params.companyName}
 ${params.companyIndustry ? `Industry: ${params.companyIndustry}` : ''}
 ${params.companySize ? `Company Size: ${params.companySize}` : ''}
+${params.yearFounded ? `Founded: ${params.yearFounded}` : ''}
+${params.country ? `Country: ${params.country}` : ''}
+${techStack ? `Tech stack (from company's public profile): ${techStack}` : ''}
 ${params.companyDescription ? `About the company: ${params.companyDescription}` : ''}
 ${params.contactName ? `Contact: ${params.contactName}` : ''}
 ${params.skills && params.skills.length > 0 ? `Key Skills: ${params.skills.join(', ')}` : ''}

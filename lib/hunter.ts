@@ -24,6 +24,17 @@ async function recordHunterRequest(userId: string | null | undefined): Promise<v
   }
 }
 
+// Company enrichment has a separate Hunter quota pool — track independently
+// so we can gate it at a different tier limit than domain-search/verify.
+async function recordHunterEnrichment(userId: string | null | undefined): Promise<void> {
+  if (!userId) return
+  try {
+    await incrementUsage(userId, 'hunter_enrichment', 1)
+  } catch (err) {
+    console.warn('Failed to record hunter_enrichment usage:', err)
+  }
+}
+
 export interface HunterEmail {
   value: string
   type: 'personal' | 'generic'
@@ -152,6 +163,183 @@ export interface HunterVerifyResult {
  * Returns null if HUNTER_API_KEY is not set — callers should fall back to
  * a cheaper MX-only check in that case.
  */
+// ─── Email Finder (name → verified email) ──────────────────────────────────
+
+export interface HunterEmailFinderResult {
+  email: string
+  score: number
+  domain: string | null
+  firstName: string | null
+  lastName: string | null
+  position: string | null
+  verification: { status: HunterVerifyStatus; date: string | null } | null
+}
+
+/**
+ * Given a domain + person name, Hunter guesses the company's email pattern
+ * and verifies a candidate address. Counts against the same request pool as
+ * domain-search/verify, so no separate quota gating is needed.
+ *
+ * Returns null if HUNTER_API_KEY is missing, the inputs are insufficient,
+ * or Hunter couldn't produce a candidate with reasonable confidence.
+ */
+export async function hunterEmailFinder(input: {
+  domain?: string | null
+  company?: string | null
+  firstName: string
+  lastName: string
+  userId?: string | null
+}): Promise<HunterEmailFinderResult | null> {
+  if (!HUNTER_API_KEY) return null
+  const first = input.firstName.trim()
+  const last = input.lastName.trim()
+  if (!first || !last) return null
+
+  const cleanDomain = input.domain?.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
+  const company = input.company?.trim()
+  if (!cleanDomain && !company) return null
+
+  try {
+    const params = new URLSearchParams({
+      api_key: HUNTER_API_KEY,
+      first_name: first,
+      last_name: last,
+    })
+    if (cleanDomain) params.set('domain', cleanDomain)
+    else if (company) params.set('company', company)
+
+    const res = await fetch(`${BASE}/email-finder?${params.toString()}`)
+    await recordHunterRequest(input.userId)
+    if (!res.ok) {
+      if (res.status === 400 || res.status === 404) return null
+      console.warn('Hunter email-finder error:', res.status)
+      return null
+    }
+
+    const raw = (await res.json()) as {
+      data?: {
+        email?: string
+        score?: number
+        domain?: string
+        first_name?: string
+        last_name?: string
+        position?: string
+        verification?: { status?: string; date?: string } | null
+      }
+    }
+    const d = raw.data
+    if (!d?.email) return null
+
+    const verdict = (d.verification?.status ?? '').toLowerCase()
+    const vStatus: HunterVerifyStatus =
+      verdict === 'valid' ? 'valid'
+      : verdict === 'invalid' ? 'invalid'
+      : verdict === 'accept_all' ? 'accept_all'
+      : verdict === 'webmail' ? 'webmail'
+      : verdict === 'disposable' ? 'disposable'
+      : 'unknown'
+
+    return {
+      email: d.email,
+      score: d.score ?? 0,
+      domain: d.domain ?? cleanDomain ?? null,
+      firstName: d.first_name ?? first,
+      lastName: d.last_name ?? last,
+      position: d.position ?? null,
+      verification: d.verification ? { status: vStatus, date: d.verification.date ?? null } : null,
+    }
+  } catch (err) {
+    console.warn('Hunter email-finder fetch failed:', err)
+    return null
+  }
+}
+
+// ─── Company Enrichment (firmographics) ────────────────────────────────────
+
+export interface HunterCompanyEnrichment {
+  domain: string
+  name: string | null
+  description: string | null
+  industry: string | null
+  foundedYear: number | null
+  employeeCount: string | null
+  country: string | null
+  locality: string | null
+  logo: string | null
+  linkedIn: string | null
+  twitter: string | null
+  techStack: string[]
+}
+
+/**
+ * Hunter Company Enrichment — returns authoritative firmographics for a
+ * domain. Counts against a SEPARATE quota (enrichment credits), not the
+ * shared search/verify pool. Gate behind paid tiers.
+ *
+ * Returns null if the key is missing, the domain isn't in Hunter's dataset,
+ * or the request fails.
+ */
+export async function hunterEnrichCompany(input: {
+  domain: string
+  userId?: string | null
+}): Promise<HunterCompanyEnrichment | null> {
+  if (!HUNTER_API_KEY) return null
+  const domain = input.domain.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
+  if (!domain) return null
+
+  try {
+    const res = await fetch(
+      `${BASE}/companies/find?domain=${encodeURIComponent(domain)}&api_key=${HUNTER_API_KEY}`,
+    )
+    await recordHunterEnrichment(input.userId)
+    if (!res.ok) {
+      if (res.status === 400 || res.status === 404) return null
+      console.warn('Hunter enrichment error:', res.status)
+      return null
+    }
+
+    const raw = (await res.json()) as {
+      data?: {
+        id?: string
+        name?: string
+        legalName?: string
+        domain?: string
+        description?: string
+        foundedYear?: number | null
+        category?: { industry?: string; industryGroup?: string }
+        metrics?: { employees?: number | null; employeesRange?: string | null }
+        geo?: { country?: string; countryCode?: string; city?: string; state?: string }
+        logo?: string
+        linkedin?: { handle?: string }
+        twitter?: { handle?: string }
+        tech?: string[]
+      }
+    }
+    const d = raw.data
+    if (!d) return null
+
+    const linkedInHandle = d.linkedin?.handle
+    const twitterHandle = d.twitter?.handle
+    return {
+      domain: d.domain ?? domain,
+      name: d.name ?? d.legalName ?? null,
+      description: d.description ?? null,
+      industry: d.category?.industry ?? d.category?.industryGroup ?? null,
+      foundedYear: d.foundedYear ?? null,
+      employeeCount: d.metrics?.employeesRange ?? (d.metrics?.employees ? String(d.metrics.employees) : null),
+      country: d.geo?.country ?? null,
+      locality: d.geo?.city ?? d.geo?.state ?? null,
+      logo: d.logo ?? null,
+      linkedIn: linkedInHandle ? `https://www.linkedin.com/${linkedInHandle.startsWith('company/') ? linkedInHandle : 'company/' + linkedInHandle}` : null,
+      twitter: twitterHandle ? `https://twitter.com/${twitterHandle}` : null,
+      techStack: Array.isArray(d.tech) ? d.tech : [],
+    }
+  } catch (err) {
+    console.warn('Hunter enrichment fetch failed:', err)
+    return null
+  }
+}
+
 export async function hunterVerifyEmail(email: string, userId?: string | null): Promise<HunterVerifyResult | null> {
   if (!HUNTER_API_KEY) return null
   if (!email) return null
