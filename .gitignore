@@ -41,4 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 # prisma
-prisma/migrations/
+# Migrations MUST be committed — the production entrypoint runs
+# `prisma migrate deploy` which reads migration.sql files from this dir.
+# Leaving them out of git means prod deploys apply nothing and schema drifts.

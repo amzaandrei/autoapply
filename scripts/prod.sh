@@ -71,9 +71,21 @@ fi
 [[ -f .env.production ]] || fail ".env.production not found. Run: cp .env.production.example .env.production"
 
 REQUIRED=(
+  # Core infrastructure
   DOMAIN NEXT_PUBLIC_APP_URL NEXTAUTH_URL
   AUTH_SECRET DB_PASSWORD REDIS_PASSWORD
-  ANTHROPIC_API_KEY
+  # Core features (app is unusable without these)
+  ANTHROPIC_API_KEY HUNTER_API_KEY
+  # Google OAuth (login) + Gmail (send) — app is sign-in-broken without them
+  GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET
+  GMAIL_CLIENT_ID GMAIL_CLIENT_SECRET GMAIL_REDIRECT_URI
+  # Billing — prevents silent free-mode shipping
+  STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
+  STRIPE_PRICE_ID_STARTER STRIPE_PRICE_ID_PRO STRIPE_PRICE_ID_POWER
+  # Admin dashboard access
+  ADMIN_EMAILS
+  # Maps (discovery + coverage map)
+  NEXT_PUBLIC_MAPBOX_TOKEN
 )
 
 MISSING=()

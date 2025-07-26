@@ -1,5 +1,102 @@
 # Deployment & CI/CD
 
+## Go-live checklist (first production launch)
+
+Work through this top-to-bottom before pointing a domain at the prod VPS.
+
+### 1. Secrets you must procure first
+
+- [ ] **Domain** with DNS control — set `A` record for apex + optional `www`
+- [ ] **Postgres password** — `openssl rand -base64 32`
+- [ ] **Redis password** — `openssl rand -base64 32`
+- [ ] **`AUTH_SECRET`** — `openssl rand -base64 32`
+- [ ] **Anthropic API key** — https://console.anthropic.com/ (billing enabled)
+- [ ] **Hunter API key** — https://hunter.io/api-keys (at least Starter plan, $49/mo)
+- [ ] **Google Cloud OAuth app**
+  - Authorized redirect URIs: `https://<domain>/api/auth/callback/google`
+    and `https://<domain>/api/gmail/callback`
+  - Scopes: `openid email profile https://www.googleapis.com/auth/gmail.send
+    https://www.googleapis.com/auth/gmail.readonly
+    https://www.googleapis.com/auth/calendar.readonly`
+- [ ] **Stripe live account**
+  - 3 recurring products (Starter $9, Pro $19, Power $49) → copy the 3 `price_...` IDs
+  - Webhook endpoint: `https://<domain>/api/stripe/webhook` listening on
+    `checkout.session.completed`, `customer.subscription.*`, `invoice.*`
+- [ ] **Mapbox public token** — https://account.mapbox.com/access-tokens/
+- [ ] (Optional) Sentry DSN, PostHog key, Telegram bot token, LinkedIn OAuth
+
+### 2. Fill `.env.production` on the VPS
+
+```bash
+cp .env.production.example .env.production
+nano .env.production
+```
+
+`./scripts/prod.sh` refuses to start if any required field is empty. The
+required set now includes all API keys for the core funnel (Anthropic,
+Hunter, Google, Stripe, Mapbox) and the 3 Stripe price IDs.
+
+### 3. Stripe webhook wiring
+
+The webhook endpoint must use the **live** signing secret (not `whsec_test_...`):
+
+```bash
+# In Stripe Dashboard → Developers → Webhooks → your endpoint → Signing secret
+STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+After deploy, trigger a test event from the Stripe dashboard and verify the
+app logs a 200 response.
+
+### 4. Database migrations (one-time per environment)
+
+The entrypoint runs `prisma migrate deploy` on every container start. On a
+fresh prod DB this will apply `0_init/migration.sql` and any later
+migrations automatically. To add a new migration locally:
+
+```bash
+npx prisma migrate dev --name <descriptive_name>
+git add prisma/migrations && git commit
+```
+
+**Never** use `prisma db push` for production schemas — it can silently
+drop columns. `npm run db:push` is dev-only.
+
+### 5. First deploy + verification
+
+```bash
+ssh root@<vps>
+cd /opt/autoapply
+./scripts/prod.sh --detach
+```
+
+Health check should return `{"status":"ok","db":"up","redis":"up"}`:
+```bash
+curl -s https://<domain>/api/health | jq
+```
+
+Smoke test in the browser:
+- [ ] Sign in with Google → session persists
+- [ ] Upload a CV → parses OK
+- [ ] Create a campaign → discover finds companies → emails generate
+- [ ] Stripe checkout → tier flips in DB (`SELECT tier FROM "Subscription"`)
+- [ ] Stripe webhook returns 200 on subscription events
+- [ ] Admin dashboard (`/admin`) loads for emails in `ADMIN_EMAILS`
+
+### 6. Turn on the cron sweep
+
+In `.env.production` on the worker host:
+```
+WORKER_CRON_ENABLED=true
+AUTOPILOT_ENABLED=true     # only after confirming with at least one real user
+```
+
+Restart the worker: `docker compose restart worker`. `AUTOPILOT_ENABLED=false`
+until you've verified manual campaigns work end-to-end — autopilot sends
+actual emails without confirmation.
+
+---
+
 ## Topology
 
 Two environments, same Docker image, different VPS + different env:
