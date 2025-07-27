@@ -15,6 +15,8 @@
 #   ./scripts/prod.sh --down        # stop everything (keeps volumes)
 #   ./scripts/prod.sh --wipe        # stop + delete db/redis volumes (DATA LOSS)
 #   ./scripts/prod.sh --logs        # just tail logs
+#   ./scripts/prod.sh --skip-stripe # allow Stripe keys to be "_placeholder" for
+#                                   # an IP-only first deploy (billing disabled)
 
 set -euo pipefail
 
@@ -27,16 +29,18 @@ fail()  { echo "${RED}${BOLD}✖${RESET} $*" >&2; exit 1; }
 
 DETACH=0
 REBUILD=0
+SKIP_STRIPE=0
 MODE="up"
 for arg in "$@"; do
   case "$arg" in
-    --detach|-d) DETACH=1 ;;
-    --rebuild)   REBUILD=1 ;;
-    --down)      MODE="down" ;;
-    --wipe)      MODE="wipe" ;;
-    --logs)      MODE="logs" ;;
+    --detach|-d)    DETACH=1 ;;
+    --rebuild)      REBUILD=1 ;;
+    --skip-stripe)  SKIP_STRIPE=1 ;;
+    --down)         MODE="down" ;;
+    --wipe)         MODE="wipe" ;;
+    --logs)         MODE="logs" ;;
     -h|--help)
-      head -n 18 "$0" | tail -n 17
+      head -n 20 "$0" | tail -n 19
       exit 0
       ;;
     *) fail "Unknown flag: $arg" ;;
@@ -88,16 +92,54 @@ REQUIRED=(
   NEXT_PUBLIC_MAPBOX_TOKEN
 )
 
+# Stripe-only list: these can be "_placeholder" values when --skip-stripe is passed.
+# Used for IP-only first deploys where you haven't activated a Stripe live account yet.
+# The app boots and billing routes return 503s; everything else (login, CV, campaigns,
+# discovery, email drafting) works. Flip to real keys once you have a domain.
+STRIPE_VARS=(
+  STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
+  STRIPE_PRICE_ID_STARTER STRIPE_PRICE_ID_PRO STRIPE_PRICE_ID_POWER
+)
+
+# Returns 0 if the value is a recognized placeholder (for --skip-stripe mode).
+is_placeholder() {
+  case "$1" in
+    *_placeholder|placeholder|TODO|changeme) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Returns 0 if $var is in the STRIPE_VARS list.
+is_stripe_var() {
+  local needle="$1"
+  for v in "${STRIPE_VARS[@]}"; do
+    [[ "$v" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
 MISSING=()
+PLACEHOLDERS=()
 for var in "${REQUIRED[@]}"; do
   val=$(grep -E "^${var}=" .env.production | sed 's/^[^=]*=//' | tr -d '"' | tr -d "'" || true)
   if [[ -z "${val:-}" ]]; then
     MISSING+=("$var")
+  elif is_placeholder "$val"; then
+    # Placeholders only tolerated for Stripe vars under --skip-stripe
+    if [[ $SKIP_STRIPE -eq 1 ]] && is_stripe_var "$var"; then
+      PLACEHOLDERS+=("$var")
+    else
+      MISSING+=("$var (has placeholder value)")
+    fi
   fi
 done
 
 if (( ${#MISSING[@]} > 0 )); then
-  fail "Missing required values in .env.production: ${MISSING[*]}"
+  fail "Missing/invalid values in .env.production: ${MISSING[*]}"
+fi
+
+if (( ${#PLACEHOLDERS[@]} > 0 )); then
+  warn "Stripe is stubbed (${PLACEHOLDERS[*]}) — billing routes will fail until real keys are set"
 fi
 
 # ── Export env for compose build args ──────────────────────────────────────
