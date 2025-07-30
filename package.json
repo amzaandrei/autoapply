@@ -52,6 +52,7 @@
     "bullmq": "^5.74.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "google-auth-library": "^9.15.1",
     "googleapis": "^144.0.0",
     "ioredis": "^5.10.1",
     "isomorphic-dompurify": "^3.9.0",
