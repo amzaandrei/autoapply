@@ -42,14 +42,17 @@ ENV NODE_ENV=production PORT=3002 HOSTNAME=0.0.0.0
 RUN apk add --no-cache wget && \
     addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 
-# Next.js standalone build
+# Next.js standalone build — tracer already bundles @prisma/client
+# (listed in serverExternalPackages) into .next/standalone/node_modules.
+# In Prisma 7 the client generates to node_modules/.pnpm/@prisma+client@.../
+# not node_modules/.prisma — so the old .prisma copy is both missing and
+# unnecessary.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 # Worker build output (may not exist in pure app image; tolerated)
 COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist
-# Worker relies on full node_modules for prisma, bullmq, etc
+# Worker relies on full node_modules for prisma CLI (migrate deploy), bullmq, etc
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./worker_modules
 COPY --chown=nextjs:nodejs docker/entrypoint.sh ./entrypoint.sh
 
