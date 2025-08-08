@@ -55,8 +55,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist
 # Worker relies on full node_modules for prisma CLI (migrate deploy), bullmq, etc
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./worker_modules
 COPY --chown=nextjs:nodejs docker/entrypoint.sh ./entrypoint.sh
+COPY --chown=nextjs:nodejs docker/worker-entrypoint.sh ./docker/worker-entrypoint.sh
 
-RUN chmod +x ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh ./docker/worker-entrypoint.sh
 
 USER nextjs
 EXPOSE 3002
