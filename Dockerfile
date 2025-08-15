@@ -50,6 +50,11 @@ RUN apk add --no-cache wget && \
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+# prisma.config.ts provides datasource.url (resolved from process.env.DATABASE_URL
+# at migrate-deploy time). Without it, Prisma 7 errors out because the schema's
+# `datasource db` block intentionally has no `url = env(...)` — the URL lives
+# in the config file so a single source of truth handles dev (dotenv) + prod.
+COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
 # Worker build output (may not exist in pure app image; tolerated)
 COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist
 # Worker relies on full node_modules for prisma CLI (migrate deploy), bullmq, etc
