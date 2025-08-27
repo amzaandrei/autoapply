@@ -40,6 +40,14 @@ function buildCsp(nonce: string): string {
 
 // NextAuth `auth` wraps a handler and exposes the session on req.auth.
 // We use it here as the Next.js proxy (formerly middleware).
+//
+// CSP nonce plumbing: with 'strict-dynamic', host-based allowlisting ('self')
+// is ignored — every script tag must carry a nonce. Next.js auto-attaches the
+// nonce to its chunks *only if* it can read `x-nonce` off the REQUEST headers
+// via `headers()`. That's why we have to pass the nonce through
+// NextResponse.next({ request: { headers } }) — setting it on the response
+// alone makes the browser enforce CSP while Next.js still renders un-nonced
+// tags, blocking the whole client bundle.
 export const proxy = auth((req) => {
   const pathname = req.nextUrl.pathname
   const skipCsp =
@@ -47,12 +55,21 @@ export const proxy = auth((req) => {
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico'
 
-  const res = NextResponse.next()
-  if (!skipCsp) {
-    const nonce = generateNonce()
-    res.headers.set('Content-Security-Policy', buildCsp(nonce))
-    res.headers.set('X-Nonce', nonce)
+  if (skipCsp) {
+    return NextResponse.next()
   }
+
+  const nonce = generateNonce()
+  const csp = buildCsp(nonce)
+
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.set('x-nonce', nonce)
+
+  const res = NextResponse.next({
+    request: { headers: requestHeaders },
+  })
+  res.headers.set('Content-Security-Policy', csp)
+  res.headers.set('X-Nonce', nonce)
   return res
 })
 
