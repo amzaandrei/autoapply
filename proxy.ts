@@ -13,10 +13,23 @@ function generateNonce(): string {
 function buildCsp(nonce: string): string {
   const isDev = process.env.NODE_ENV !== 'production'
   // React/Next require eval in dev for HMR + source-mapped stack reconstruction.
-  // In production we use strict-dynamic with nonce only.
+  //
+  // Production note: we intentionally do NOT use 'strict-dynamic' + 'nonce-X'
+  // here. strict-dynamic requires every script tag (Next's auto-emitted chunks
+  // + inline bootstraps) to carry a matching nonce. Next.js only attaches the
+  // nonce at render time in a *dynamically rendered* layout; any statically
+  // rendered page (e.g. /, /pricing) emits un-nonced tags and gets fully
+  // blocked. Forcing every layout to `await headers()` fixes the CSP but kills
+  // static caching — a bad trade for a marketing site. Instead we fall back
+  // to 'self' + 'unsafe-inline' + explicit host allowlist: external script
+  // injection is still blocked by 'self' and frame-ancestors 'none' prevents
+  // clickjacking. Tighten to strict-dynamic once a real domain is in place
+  // and static pages are moved behind a dynamic boundary.
+  // The nonce is still generated and threaded through to style-src and for
+  // future inline-script use; it's just not required by script-src anymore.
   const scriptSrc = isDev
     ? `script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com https://*.posthog.com https://*.sentry-cdn.com`
-    : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://*.posthog.com https://*.sentry-cdn.com`
+    : `script-src 'self' 'unsafe-inline' https://js.stripe.com https://*.posthog.com https://*.sentry-cdn.com`
 
   return [
     `default-src 'self'`,
@@ -41,13 +54,12 @@ function buildCsp(nonce: string): string {
 // NextAuth `auth` wraps a handler and exposes the session on req.auth.
 // We use it here as the Next.js proxy (formerly middleware).
 //
-// CSP nonce plumbing: with 'strict-dynamic', host-based allowlisting ('self')
-// is ignored — every script tag must carry a nonce. Next.js auto-attaches the
-// nonce to its chunks *only if* it can read `x-nonce` off the REQUEST headers
-// via `headers()`. That's why we have to pass the nonce through
-// NextResponse.next({ request: { headers } }) — setting it on the response
-// alone makes the browser enforce CSP while Next.js still renders un-nonced
-// tags, blocking the whole client bundle.
+// Nonce plumbing is kept even though script-src doesn't currently require a
+// matching nonce (see buildCsp comment). The nonce is forwarded through
+// NextResponse.next({ request: { headers } }) so that if/when we tighten CSP
+// back to 'strict-dynamic', Next.js can already see x-nonce on the request
+// and attach it to its auto-emitted <script> tags — no middleware rewrite
+// needed. For now it's a no-op that keeps the tightening path cheap.
 export const proxy = auth((req) => {
   const pathname = req.nextUrl.pathname
   const skipCsp =
