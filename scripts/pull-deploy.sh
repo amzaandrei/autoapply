@@ -34,8 +34,11 @@ export IMAGE IMAGE_TAG
 
 COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.registry.yml)
 
-# Record current image tags so we can roll back on failure
-PREV_APP=$(docker compose "${COMPOSE_FILES[@]}" config 2>/dev/null | awk '/^    image:/ && !seen {print $2; seen=1}' || true)
+# Record the currently RUNNING app image so we can roll back on failure.
+# (Reading `docker compose config` here would return the *target* image — the
+# one we're about to deploy — not the one currently serving traffic, so
+# rollback would be a no-op. Inspect the live container instead.)
+PREV_APP=$(docker inspect --format='{{.Config.Image}}' autoapply-app-1 2>/dev/null || true)
 info "Previous image: ${PREV_APP:-<none>}"
 info "Target image:   $IMAGE:$IMAGE_TAG"
 
@@ -65,8 +68,10 @@ if [[ $OK -eq 1 ]]; then
 fi
 
 warn "Health check failed — attempting rollback"
-if [[ -n "${PREV_APP:-}" && "$PREV_APP" != "$IMAGE:$IMAGE_TAG" ]]; then
-  # Parse "<img>:<tag>" out of PREV_APP for IMAGE_TAG
+# Only roll back if the previous image was from the same GHCR repo — a locally
+# built image (e.g. autoapply-app:latest from scripts/prod.sh) can't be pulled
+# back via the registry overlay, so we bail instead of looping.
+if [[ -n "${PREV_APP:-}" && "$PREV_APP" != "$IMAGE:$IMAGE_TAG" && "$PREV_APP" == "$IMAGE:"* ]]; then
   PREV_TAG="${PREV_APP##*:}"
   export IMAGE_TAG="$PREV_TAG"
   docker compose "${COMPOSE_FILES[@]}" up -d --no-build
@@ -74,4 +79,4 @@ if [[ -n "${PREV_APP:-}" && "$PREV_APP" != "$IMAGE:$IMAGE_TAG" ]]; then
   exit 1
 fi
 
-fail "Deploy failed and no previous image to roll back to. Check: docker compose logs app"
+fail "Deploy failed and no previous GHCR image to roll back to. Check: docker compose logs app"
