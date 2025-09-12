@@ -104,6 +104,16 @@ jobs:
             ./scripts/pull-deploy.sh
 
       - name: Smoke test /api/health
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
         run: |
-          curl -fsSL --max-time 10 "https://${{ vars.PUBLIC_URL }}/api/health" | tee /tmp/health.json
+          # Strip whitespace + stray scheme/trailing slashes from the env var —
+          # GitHub doesn't trim variable values, so a pasted-in space would
+          # otherwise become "https://host /api/health" and curl rejects it.
+          HOST=$(echo "$PUBLIC_URL" | tr -d '[:space:]' | sed -E 's#^https?://##; s#/+$##')
+          if [ -z "$HOST" ]; then
+            echo "PUBLIC_URL variable is empty — set it in the environment settings" >&2
+            exit 1
+          fi
+          curl -fsSL --max-time 10 "https://${HOST}/api/health" | tee /tmp/health.json
           grep -q '"status":"ok"' /tmp/health.json
