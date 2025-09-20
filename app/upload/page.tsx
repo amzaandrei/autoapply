@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress'
 import { toast } from 'sonner'
 import { Upload, FileText, Loader2, CheckCircle, ArrowRight } from 'lucide-react'
 import { StepIndicator } from '@/components/StepIndicator'
+import { PageTransition, CardEntrance } from '@/components/Motion'
 import Link from 'next/link'
 
 type UploadPhase = 'idle' | 'reading' | 'uploading' | 'parsing' | 'done'
@@ -155,9 +156,11 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageTransition>
       <div className="max-w-4xl mx-auto px-4 py-12">
         <StepIndicator currentStep={1} />
 
+        <CardEntrance>
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl">
@@ -331,7 +334,9 @@ export default function UploadPage() {
             )}
           </CardContent>
         </Card>
+        </CardEntrance>
       </div>
+      </PageTransition>
     </div>
   )
 }

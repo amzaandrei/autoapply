@@ -8,6 +8,7 @@ import {
   TIER_PRICES_USD,
   type TierLimits,
 } from '@/lib/tier-limits'
+import { FadeUp, Stagger } from '@/components/Motion'
 
 export const metadata = {
   title: 'Pricing — AutoApply',
@@ -75,7 +76,7 @@ export default function PricingPage() {
     <main className="min-h-screen bg-background">
       {/* Hero */}
       <section className="pt-16 pb-10 md:pt-24 md:pb-14">
-        <div className="max-w-4xl mx-auto px-6 text-center space-y-4">
+        <FadeUp className="max-w-4xl mx-auto px-6 text-center space-y-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border/60 bg-muted/50 text-xs text-muted-foreground">
             <Sparkles className="h-3 w-3 text-primary" />
             Simple, transparent pricing
@@ -86,17 +87,17 @@ export default function PricingPage() {
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Start free. Upgrade when you need more volume, A/B tests, or follow-ups. Cancel anytime.
           </p>
-        </div>
+        </FadeUp>
       </section>
 
       {/* Plans */}
       <section className="pb-20">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Stagger className="grid md:grid-cols-2 lg:grid-cols-4 gap-4" baseDelay={0.1}>
             {PLANS.map((p) => (
               <PlanCard key={p.id} plan={p} />
             ))}
-          </div>
+          </Stagger>
 
           <p className="mt-8 text-center text-xs text-muted-foreground">
             All plans include: Gmail-native sending · Mapbox coverage map · CV parsing ·

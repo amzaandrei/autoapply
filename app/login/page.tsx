@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardEntrance } from '@/components/Motion'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -36,7 +37,8 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-full max-w-md">
+      <CardEntrance className="w-full max-w-md">
+      <Card className="w-full">
         <CardHeader>
           <CardTitle className="text-2xl">AutoApply</CardTitle>
           <CardDescription>Sign in to your account</CardDescription>
@@ -88,6 +90,7 @@ export default function LoginPage() {
           </p>
         </CardFooter>
       </Card>
+      </CardEntrance>
     </div>
   )
 }

@@ -17,6 +17,7 @@ import {
 import CampaignList from '@/components/CampaignList'
 import { ContactedCompanies } from '@/components/ContactedCompanies'
 import { TemplatesSection } from '@/components/TemplatesSection'
+import { PageTransition, Stagger } from '@/components/Motion'
 
 export default async function DashboardPage() {
   const session = await auth()
@@ -79,6 +80,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageTransition>
       <div className="max-w-5xl mx-auto px-4 py-12">
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
@@ -97,7 +99,7 @@ export default async function DashboardPage() {
 
         {/* Stats */}
         {totalSent > 0 && (
-          <div className="grid grid-cols-5 gap-3 mb-10">
+          <Stagger className="grid grid-cols-5 gap-3 mb-10">
             <Card>
               <CardContent className="pt-5 pb-4">
                 <div className="flex items-center gap-2.5">
@@ -155,7 +157,7 @@ export default async function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </Stagger>
         )}
 
         {/* Coverage CTA */}
@@ -193,6 +195,7 @@ export default async function DashboardPage() {
 
         {/* Recent campaigns */}
         {campaigns.length > 0 ? (
+          // CampaignList has its own StaggerItem-based entrance
           <CampaignList campaigns={campaigns} sentDatesByCampaign={sentDatesByCampaign} />
         ) : (
           <Card>
@@ -245,6 +248,7 @@ export default async function DashboardPage() {
           </Card>
         )}
       </div>
+      </PageTransition>
     </div>
   )
 }

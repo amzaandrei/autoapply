@@ -16,6 +16,7 @@ import {
   type Tier,
   type TierLimits,
 } from '@/lib/tier-limits'
+import { PageTransition, Stagger } from '@/components/Motion'
 
 interface UsageStats {
   emailsSentThisMonth: number
@@ -144,6 +145,7 @@ function BillingContent() {
     Number.isFinite(limit) ? Math.min(100, Math.round((v / limit) * 100)) : 0
 
   return (
+    <PageTransition>
     <div className="max-w-5xl mx-auto p-6 space-y-8">
       <header>
         <h1 className="text-3xl font-semibold">Billing & Plan</h1>
@@ -228,7 +230,7 @@ function BillingContent() {
             ? 'Upgrade takes effect immediately. Downgrades apply at the next billing period via the billing portal.'
             : 'Pick the plan that matches how hard you\'re job-hunting. Cancel anytime.'}
         </p>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <Stagger className="grid md:grid-cols-2 lg:grid-cols-4 gap-3" baseDelay={0.05}>
           {(['FREE', 'STARTER', 'PRO', 'POWER'] as const).map((t) => (
             <PlanCard
               key={t}
@@ -239,9 +241,10 @@ function BillingContent() {
               onPortal={handlePortal}
             />
           ))}
-        </div>
+        </Stagger>
       </section>
     </div>
+    </PageTransition>
   )
 }
 

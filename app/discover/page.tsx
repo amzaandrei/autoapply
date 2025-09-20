@@ -34,6 +34,7 @@ import {
   Cpu,
   Layers,
 } from 'lucide-react'
+import { PageTransition, CardEntrance } from '@/components/Motion'
 
 const JOB_TITLE_SUGGESTIONS = [
   'Software Engineer', 'Senior Software Engineer', 'Staff Software Engineer',
@@ -341,12 +342,14 @@ function DiscoverPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PageTransition>
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push('/dashboard')}>← Back to Dashboard</Button>
         <StepIndicator currentStep={2} campaignId={campaignId ?? undefined} />
 
         {/* Step 1: Create campaign */}
         {!campaignId ? (
+          <CardEntrance>
           <Card>
             <CardHeader>
               <CardTitle className="text-2xl">Tell us what you&apos;re after.</CardTitle>
@@ -413,6 +416,7 @@ function DiscoverPage() {
               </div>
             </CardContent>
           </Card>
+          </CardEntrance>
         ) : (
           <div className="space-y-6">
             {/* AI Discovery */}
@@ -895,6 +899,7 @@ function DiscoverPage() {
         )}
 
       </div>
+      </PageTransition>
 
       <SaveTemplateDialog
         open={saveTemplateOpen}

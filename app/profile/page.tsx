@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
+import { PageTransition } from '@/components/Motion'
 
 interface ProfileData {
   id: string
@@ -177,6 +178,7 @@ export default function ProfilePage() {
   const cvFilename = data.profile?.cvUrl?.split('/').pop() ?? null
 
   return (
+    <PageTransition>
     <main className="max-w-3xl mx-auto px-4 py-10 space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Your Profile</h1>
@@ -502,5 +504,6 @@ export default function ProfilePage() {
         Member since {new Date(data.createdAt).toLocaleDateString()}
       </p>
     </main>
+    </PageTransition>
   )
 }
