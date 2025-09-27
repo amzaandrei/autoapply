@@ -95,9 +95,21 @@ services:
       - app
     environment:
       DOMAIN: ${DOMAIN}
+      # Optional second site (portfolio co-tenant). Leave empty in .env.production
+      # to disable the second site block in the Caddyfile.
+      DOMAIN_PORTFOLIO: ${DOMAIN_PORTFOLIO:-}
 
 volumes:
   pgdata:
   redis:
   caddy_data:
   caddy_config:
+
+# Co-tenant networking: this stack joins an external Docker network called
+# `web` so its Caddy can proxy to other apps (e.g. /opt/portofolio) by
+# container name. Create the network once on the host:
+#   docker network create web
+networks:
+  default:
+    name: web
+    external: true

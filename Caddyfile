@@ -42,3 +42,44 @@
 # www.{$DOMAIN} {
 #     redir https://{$DOMAIN}{uri}
 # }
+
+# ─── Portfolio (co-tenant) ─────────────────────────────────────────────────
+# Routes the portfolio domain to the portofolio app container on the shared
+# `web` network. DOMAIN_PORTFOLIO is set in this stack's .env.production; if
+# left empty Caddy ignores this block.
+{$DOMAIN_PORTFOLIO} {
+    encode gzip zstd
+
+    reverse_proxy portofolio-app-1:3000 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # SAMEORIGIN (not DENY) because the portfolio embeds Cal.com.
+        X-Frame-Options "SAMEORIGIN"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+        -Server
+    }
+
+    @nextStatic path /_next/static/*
+    handle @nextStatic {
+        header Cache-Control "public, max-age=31536000, immutable"
+        reverse_proxy portofolio-app-1:3000
+    }
+
+    @uploads path /uploads/*
+    handle @uploads {
+        header Cache-Control "public, max-age=86400"
+        reverse_proxy portofolio-app-1:3000
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
