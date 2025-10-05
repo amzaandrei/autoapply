@@ -83,3 +83,64 @@
         format json
     }
 }
+
+# ─── Slideprep (co-tenant) ────────────────────────────────────────────────
+# Routes the slideprep domain to the slideprep app container on the shared
+# `web` network. DOMAIN_SLIDEPREP is set in this stack's .env.production; if
+# left empty Caddy ignores this block.
+{$DOMAIN_SLIDEPREP} {
+    encode gzip zstd
+
+    reverse_proxy slideprep-app-1:3003 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+        -Server
+    }
+
+    # Health endpoint should not be cached
+    @health path /api/health
+    handle @health {
+        reverse_proxy slideprep-app-1:3003
+    }
+
+    # Stripe webhook — preserve raw body and flush immediately
+    @webhook path /api/stripe/webhook
+    handle @webhook {
+        reverse_proxy slideprep-app-1:3003 {
+            flush_interval -1
+        }
+    }
+
+    # Long cache for built assets
+    @nextStatic path /_next/static/*
+    handle @nextStatic {
+        header Cache-Control "public, max-age=31536000, immutable"
+        reverse_proxy slideprep-app-1:3003
+    }
+
+    # Uploaded files (bind-mounted volume inside the slideprep container)
+    @uploads path /uploads/*
+    handle @uploads {
+        header Cache-Control "public, max-age=86400"
+        reverse_proxy slideprep-app-1:3003
+    }
+
+    # Max upload size — slideprep allows large PDFs
+    request_body {
+        max_size 30mb
+    }
+
+    log {
+        output stdout
+        format json
+    }
+}
