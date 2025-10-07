@@ -98,6 +98,8 @@ services:
       # Optional second site (portfolio co-tenant). Leave empty in .env.production
       # to disable the second site block in the Caddyfile.
       DOMAIN_PORTFOLIO: ${DOMAIN_PORTFOLIO:-}
+      # Optional third site (slideprep co-tenant). Leave empty to disable.
+      DOMAIN_SLIDEPREP: ${DOMAIN_SLIDEPREP:-}
 
 volumes:
   pgdata:
