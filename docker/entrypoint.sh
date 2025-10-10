@@ -13,13 +13,19 @@ set -e
 # break URL parsers (Prisma raises "invalid port number"). Rebuild the URLs
 # with URL-encoded passwords so any charset works. Postgres/Redis stored
 # passwords are unchanged — only the URL serialization is fixed.
-if [ -n "${DB_PASSWORD:-}" ]; then
-  DB_PW_ENC=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' -- "$DB_PASSWORD")
-  export DATABASE_URL="postgresql://autoapply:${DB_PW_ENC}@db:5432/autoapply"
+if [ -n "${DB_PASSWORD:-}" ] && [ -n "${DATABASE_URL:-}" ]; then
+  export DATABASE_URL=$(node -e '
+    const u = new URL(process.argv[1]);
+    u.password = process.argv[2];
+    process.stdout.write(u.toString());
+  ' -- "$DATABASE_URL" "$DB_PASSWORD")
 fi
-if [ -n "${REDIS_PASSWORD:-}" ]; then
-  REDIS_PW_ENC=$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' -- "$REDIS_PASSWORD")
-  export REDIS_URL="redis://:${REDIS_PW_ENC}@redis:6379"
+if [ -n "${REDIS_PASSWORD:-}" ] && [ -n "${REDIS_URL:-}" ]; then
+  export REDIS_URL=$(node -e '
+    const u = new URL(process.argv[1]);
+    u.password = process.argv[2];
+    process.stdout.write(u.toString());
+  ' -- "$REDIS_URL" "$REDIS_PASSWORD")
 fi
 
 echo "[entrypoint] applying Prisma migrations"
