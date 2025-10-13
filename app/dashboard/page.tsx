@@ -1,7 +1,7 @@
 import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { prisma } from '@/lib/prisma'
+import { prisma, withDbRetry } from '@/lib/prisma'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,42 +23,45 @@ export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 
-  const [campaigns, profile, emailStats, contactedCompanies, sentByCampaign] = await Promise.all([
-    prisma.campaign.findMany({
-      where: { userId: session.user.id },
-      include: { _count: { select: { companies: true, emails: true } } },
-      orderBy: { updatedAt: 'desc' },
-    }),
-    prisma.userProfile.findUnique({ where: { userId: session.user.id } }),
-    prisma.generatedEmail.groupBy({
-      by: ['status'],
-      where: { campaign: { userId: session.user.id } },
-      _count: true,
-    }),
-    prisma.generatedEmail.findMany({
-      where: {
-        campaign: { userId: session.user.id },
-        status: { in: ['SENT', 'OPENED', 'REPLIED', 'BOUNCED'] },
-      },
-      select: {
-        status: true,
-        sentAt: true,
-        openedAt: true,
-        repliedAt: true,
-        openCount: true,
-        company: { select: { name: true, contactEmail: true, industry: true } },
-        campaign: { select: { name: true } },
-      },
-      orderBy: { sentAt: 'desc' },
-    }),
-    prisma.generatedEmail.findMany({
-      where: {
-        campaign: { userId: session.user.id },
-        sentAt: { not: null },
-      },
-      select: { campaignId: true, sentAt: true },
-    }),
-  ])
+  const [campaigns, profile, emailStats, contactedCompanies, sentByCampaign] = await withDbRetry(
+    () =>
+      Promise.all([
+        prisma.campaign.findMany({
+          where: { userId: session.user.id },
+          include: { _count: { select: { companies: true, emails: true } } },
+          orderBy: { updatedAt: 'desc' },
+        }),
+        prisma.userProfile.findUnique({ where: { userId: session.user.id } }),
+        prisma.generatedEmail.groupBy({
+          by: ['status'],
+          where: { campaign: { userId: session.user.id } },
+          _count: true,
+        }),
+        prisma.generatedEmail.findMany({
+          where: {
+            campaign: { userId: session.user.id },
+            status: { in: ['SENT', 'OPENED', 'REPLIED', 'BOUNCED'] },
+          },
+          select: {
+            status: true,
+            sentAt: true,
+            openedAt: true,
+            repliedAt: true,
+            openCount: true,
+            company: { select: { name: true, contactEmail: true, industry: true } },
+            campaign: { select: { name: true } },
+          },
+          orderBy: { sentAt: 'desc' },
+        }),
+        prisma.generatedEmail.findMany({
+          where: {
+            campaign: { userId: session.user.id },
+            sentAt: { not: null },
+          },
+          select: { campaignId: true, sentAt: true },
+        }),
+      ]),
+  )
 
   // Build { campaignId: [YYYY-MM-DD, ...] } in the user's browser TZ on the client.
   // For the initial SSR default, we pass raw ISO strings and let the client bucket.
