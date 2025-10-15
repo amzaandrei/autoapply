@@ -1,7 +1,7 @@
 import { ShieldCheck, ShieldAlert, ShieldX, Shield } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export interface EmailVerificationBadgeProps {
+interface EmailVerificationBadgeProps {
   status: string | null | undefined
   score?: number | null
   className?: string

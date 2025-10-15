@@ -107,4 +107,3 @@ export function Stagger({
 }
 
 // Re-export motion for direct use
-export { motion }

@@ -130,7 +130,7 @@ function classify(email: string, status: HunterVerifyStatus, score: number, sour
  * send to along with the verdicts for the rest (so callers can surface why a
  * company was skipped).
  */
-export interface BatchResolveResult {
+interface BatchResolveResult {
   sendable: Array<{ company: Company; verdict: Extract<ContactVerdict, { kind: 'verified_email' }> }>
   skipped: Array<{ company: Company; verdict: Exclude<ContactVerdict, { kind: 'verified_email' }> }>
 }
@@ -140,7 +140,7 @@ export interface BatchResolveResult {
  * flow, where companies aren't yet persisted and we want to decide whether
  * to present them to the user at all.
  */
-export async function verifyTransientEmail(email: string, userId?: string | null): Promise<ContactVerdict> {
+async function verifyTransientEmail(email: string, userId?: string | null): Promise<ContactVerdict> {
   const normalized = email.trim().toLowerCase()
   if (!normalized) return { kind: 'no_email' }
 
@@ -184,7 +184,7 @@ export async function verifyTransientEmail(email: string, userId?: string | null
  * we can't produce a verified_email — i.e. the company shouldn't be shown to
  * the user as a sendable target.
  */
-export interface DiscoveryVerification {
+interface DiscoveryVerification {
   email: string
   status: HunterVerifyStatus
   score: number
@@ -247,7 +247,7 @@ export async function findAndVerifyForDiscovery(input: {
   }
 }
 
-export async function resolveContactEmailsBatch(companies: Company[], userId?: string | null): Promise<BatchResolveResult> {
+async function resolveContactEmailsBatch(companies: Company[], userId?: string | null): Promise<BatchResolveResult> {
   const sendable: BatchResolveResult['sendable'] = []
   const skipped: BatchResolveResult['skipped'] = []
 

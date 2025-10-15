@@ -52,7 +52,7 @@ export function addOpportunityLocations(userId: string, locations: Array<{ lat: 
 
 // ── Types ───────────────────────────────────────────────────────────────
 
-export interface AppliedHeatData {
+interface AppliedHeatData {
   points: Array<{ lat: number; lng: number; companyCount: number; appliedCount: number }>
   regions: Array<{ name: string; lat: number; lng: number; companyCount: number }>
   stats: { totalApplied: number; totalCompanies: number; uniqueRegions: number }

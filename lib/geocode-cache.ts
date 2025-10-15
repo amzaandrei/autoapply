@@ -5,7 +5,7 @@
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? process.env.MAPBOX_TOKEN ?? ''
 const BASE = 'https://api.mapbox.com/search/geocode/v6'
 
-export interface GeocodedLocation {
+interface GeocodedLocation {
   name: string         // full name ("San Francisco, California, United States")
   shortName: string    // "San Francisco, US"
   lat: number
@@ -39,7 +39,7 @@ const SKIP_PATTERNS = [
   /^unknown/i,
 ]
 
-export function normalizeQuery(q: string): string {
+function normalizeQuery(q: string): string {
   return (q ?? '').toLowerCase().trim().replace(/\s+/g, ' ')
 }
 
@@ -54,7 +54,7 @@ function toShortName(fullName: string): string {
   return `${parts[0]}, ${parts[parts.length - 1]}`
 }
 
-export async function geocodeForward(query: string): Promise<GeocodedLocation | null> {
+async function geocodeForward(query: string): Promise<GeocodedLocation | null> {
   const key = normalizeQuery(query)
   if (shouldSkip(key)) return null
   if (!TOKEN) return null
@@ -125,6 +125,6 @@ export async function geocodeForwardBatch(queries: string[]): Promise<Map<string
   return out
 }
 
-export function clearGeocodeCache() {
+function clearGeocodeCache() {
   cache.clear()
 }

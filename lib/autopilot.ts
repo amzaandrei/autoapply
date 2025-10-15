@@ -19,9 +19,9 @@ import { getTier, checkQuota, incrementUsage, hasTierAtLeast } from './entitleme
 import { hunterEnrichCompany } from './hunter'
 import { logger } from './logger'
 
-export type AutopilotFrequency = 'daily' | 'every2days' | 'weekly'
+type AutopilotFrequency = 'daily' | 'every2days' | 'weekly'
 
-export interface AutopilotRunResult {
+interface AutopilotRunResult {
   runId: string
   status: 'SUCCESS' | 'FAILED' | 'SKIPPED'
   skipReason?: string

@@ -6,7 +6,7 @@ import { invalidateAppliedCache } from '@/server/routers/regions'
 import { getTier, limitsFor, incrementUsage } from '@/lib/entitlements'
 import { track } from '@/lib/analytics'
 
-export interface SendResult {
+interface SendResult {
   emailId: string
   companyName: string
   to: string

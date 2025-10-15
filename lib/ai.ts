@@ -17,12 +17,12 @@ export interface CompanyResult {
   location?: string | null
 }
 
-export interface GeneratedEmailResult {
+interface GeneratedEmailResult {
   subject: string
   body: string
 }
 
-export interface ParsedCV {
+interface ParsedCV {
   fullName: string
   email: string | null
   phone: string | null
@@ -229,7 +229,7 @@ Return JSON:
   return JSON.parse(jsonStr) as GeneratedEmailResult
 }
 
-export type SearchMode = 'all' | 'top10' | 'best3'
+type SearchMode = 'all' | 'top10' | 'best3'
 
 const SEARCH_MODE_PROMPTS: Record<SearchMode, { count: string; instruction: string }> = {
   all: {
@@ -432,7 +432,7 @@ export async function discoverSimilarCompanies(params: {
 
 // ─── Company Enrichment ──────────────────────────────────────────────────
 
-export interface CompanyEnrichment {
+interface CompanyEnrichment {
   techStack: string[]
   recentFunding: string | null
   employeeGrowth: string | null
@@ -460,7 +460,7 @@ export async function enrichCompany(params: { name: string; domain?: string | nu
 
 // ─── CV Tailoring ────────────────────────────────────────────────────────
 
-export async function tailorCVForCompany(params: {
+async function tailorCVForCompany(params: {
   cvText: string; companyName: string; companyDescription?: string | null; companyIndustry?: string | null; jobTitle: string; skills: string[]; userId?: string | null
 }): Promise<{ tailoredSummary: string; emphasizedSkills: string[]; adjustedExperience: string }> {
   const response = await client.messages.create({

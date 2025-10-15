@@ -1,0 +1,15 @@
+{
+  "$schema": "https://docs.fallow.tools/schema/config.json",
+  "entry": [
+    "prisma.config.ts",
+    "scripts/worker.ts"
+  ],
+  "ignorePatterns": [
+    "app/globals.css"
+  ],
+  "ignoreDependencies": [
+    "mapbox-gl",
+    "@types/mapbox-gl",
+    "pino-pretty"
+  ]
+}

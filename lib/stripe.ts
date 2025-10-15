@@ -7,11 +7,11 @@ import type { Tier } from './tier-limits'
 
 const isProd = process.env.NODE_ENV === 'production'
 
-export const STRIPE_SECRET_KEY = isProd
+const STRIPE_SECRET_KEY = isProd
   ? process.env.STRIPE_SECRET_KEY
   : process.env.STRIPE_SECRET_KEY_TEST ?? process.env.STRIPE_SECRET_KEY
 
-export const STRIPE_WEBHOOK_SECRET = isProd
+const STRIPE_WEBHOOK_SECRET = isProd
   ? process.env.STRIPE_WEBHOOK_SECRET
   : process.env.STRIPE_WEBHOOK_SECRET_TEST ?? process.env.STRIPE_WEBHOOK_SECRET
 
@@ -24,9 +24,9 @@ function envForPlan(plan: 'STARTER' | 'PRO' | 'POWER'): string | undefined {
   return process.env[testVar] ?? process.env[liveVar]
 }
 
-export const STRIPE_PRICE_ID_STARTER = envForPlan('STARTER')
-export const STRIPE_PRICE_ID_PRO = envForPlan('PRO')
-export const STRIPE_PRICE_ID_POWER = envForPlan('POWER')
+const STRIPE_PRICE_ID_STARTER = envForPlan('STARTER')
+const STRIPE_PRICE_ID_PRO = envForPlan('PRO')
+const STRIPE_PRICE_ID_POWER = envForPlan('POWER')
 
 let _stripe: Stripe | null = null
 
@@ -44,7 +44,7 @@ export function stripe(): Stripe {
   return _stripe
 }
 
-export type PaidPlan = 'STARTER' | 'PRO' | 'POWER'
+type PaidPlan = 'STARTER' | 'PRO' | 'POWER'
 
 export function isPaidPlan(value: unknown): value is PaidPlan {
   return value === 'STARTER' || value === 'PRO' || value === 'POWER'
@@ -84,7 +84,7 @@ export function planForPriceId(priceId: string | null | undefined): PaidPlan | n
 }
 
 /** @deprecated — use requirePriceIdFor('PRO'). Kept for any legacy callers. */
-export function requirePriceId(): string {
+function requirePriceId(): string {
   return requirePriceIdFor('PRO')
 }
 
@@ -106,6 +106,6 @@ export function appUrl(): string {
  * to DB from a resolved plan. Since our Prisma enum mirrors the Tier union
  * exactly, this is a pure compile-time narrowing.
  */
-export function tierFromPlan(plan: PaidPlan): Tier {
+function tierFromPlan(plan: PaidPlan): Tier {
   return plan
 }

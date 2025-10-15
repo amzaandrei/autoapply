@@ -35,7 +35,7 @@ export function getGmailAuthUrl(oauth2Client: OAuth2Client, campaignId?: string)
   })
 }
 
-export interface GmailTokens {
+interface GmailTokens {
   accessToken: string
   refreshToken: string | null
   expiresAt: Date | null
@@ -64,7 +64,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<GmailTok
   }
 }
 
-export interface SendEmailParams {
+interface SendEmailParams {
   from?: string
   to: string
   subject: string
@@ -201,7 +201,7 @@ export async function getThreadMessages(accessToken: string, threadId: string) {
   return thread.data.messages ?? []
 }
 
-export interface ThreadMessage {
+interface ThreadMessage {
   id: string
   from: string
   to: string
@@ -255,7 +255,7 @@ export function parseThreadMessages(messages: any[], userEmail: string): ThreadM
   })
 }
 
-export async function getValidAccessToken(stored: {
+async function getValidAccessToken(stored: {
   accessToken: string
   refreshToken: string | null
   expiresAt: Date | null

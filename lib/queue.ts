@@ -13,14 +13,14 @@ export const QUEUE_NAMES = {
 let _followUpsQueue: Queue | null = null
 let _autopilotQueue: Queue | null = null
 
-export function getFollowUpsQueue(): Queue | null {
+function getFollowUpsQueue(): Queue | null {
   if (!redis) return null
   if (_followUpsQueue) return _followUpsQueue
   _followUpsQueue = new Queue(QUEUE_NAMES.FOLLOW_UPS, { connection: redis })
   return _followUpsQueue
 }
 
-export function getAutopilotQueue(): Queue | null {
+function getAutopilotQueue(): Queue | null {
   if (!redis) return null
   if (_autopilotQueue) return _autopilotQueue
   _autopilotQueue = new Queue(QUEUE_NAMES.AUTOPILOT, { connection: redis })
@@ -36,7 +36,7 @@ export interface ProcessAutopilotJob {
   templateId: string
 }
 
-export async function enqueueFollowUpsForUser(userId: string): Promise<boolean> {
+async function enqueueFollowUpsForUser(userId: string): Promise<boolean> {
   const q = getFollowUpsQueue()
   if (!q) return false
   const opts: JobsOptions = {

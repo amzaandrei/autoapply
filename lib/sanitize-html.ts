@@ -25,7 +25,7 @@ export function sanitizeHtml(html: string): string {
  * Escape plain text then convert paragraphs/newlines to safe HTML.
  * Replaces the old toHtml in lib/gmail.ts which did NOT escape.
  */
-export function textToSafeHtml(text: string): string {
+function textToSafeHtml(text: string): string {
   const escaped = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
