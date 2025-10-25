@@ -3,7 +3,7 @@
 // Tier 2 = strong regional hubs (Zurich, Dublin, Toronto, Tel Aviv, etc.)
 // Tier 3 = rising / emerging hubs (Warsaw, Lisbon, Bangalore, etc.)
 
-export interface TechHub {
+interface TechHub {
   id: string
   name: string
   lat: number
@@ -56,7 +56,7 @@ export const TECH_HUBS: readonly TechHub[] = [
   { id: 'sao-paulo',       name: 'S\u00e3o Paulo, BR',lat: -23.5505, lng: -46.6333, tier: 2, industries: ['Fintech', 'SaaS'], country: 'BR' },
 ]
 
-export function getHubById(id: string): TechHub | undefined {
+function getHubById(id: string): TechHub | undefined {
   return TECH_HUBS.find((h) => h.id === id)
 }
 
@@ -73,7 +73,7 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-export function findNearestHub(lat: number, lng: number, maxKmDistance = 50): TechHub | undefined {
+function findNearestHub(lat: number, lng: number, maxKmDistance = 50): TechHub | undefined {
   let best: TechHub | undefined
   let bestDist = Infinity
   for (const hub of TECH_HUBS) {
@@ -86,7 +86,7 @@ export function findNearestHub(lat: number, lng: number, maxKmDistance = 50): Te
   return best
 }
 
-export function distanceToNearestHub(lat: number, lng: number): number {
+function distanceToNearestHub(lat: number, lng: number): number {
   let bestDist = Infinity
   for (const hub of TECH_HUBS) {
     const d = haversineKm(lat, lng, hub.lat, hub.lng)

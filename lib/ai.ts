@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { recordAnthropicUsage } from './anthropic-usage'
+import { webSearchTool, parseJsonFromResponse, parseJsonFromWebSearchResponse } from './ai-helpers'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -17,12 +18,12 @@ export interface CompanyResult {
   location?: string | null
 }
 
-export interface GeneratedEmailResult {
+interface GeneratedEmailResult {
   subject: string
   body: string
 }
 
-export interface ParsedCV {
+interface ParsedCV {
   fullName: string
   email: string | null
   phone: string | null
@@ -149,14 +150,9 @@ Return JSON where the body uses \\n\\n between every paragraph:
   })
   await recordAnthropicUsage(params.userId, response.usage)
 
-  const text = response.content.find((b) => b.type === 'text')
-  if (!text || text.type !== 'text') throw new Error('No text response from AI')
+  const result = parseJsonFromResponse<GeneratedEmailResult>(response, 'AI')
 
-  const raw = text.text.trim()
-  const jsonStr = raw.startsWith('{') ? raw : raw.match(/\{[\s\S]*\}/)?.[0] ?? raw
-  const result = JSON.parse(jsonStr) as GeneratedEmailResult
-
-  // Ensure paragraph breaks exist — if Claude returned a flat string, 
+  // Ensure paragraph breaks exist — if Claude returned a flat string,
   // split on sentence-ending punctuation followed by capital letters
   if (result.body && !result.body.includes('\n')) {
     result.body = result.body
@@ -221,15 +217,10 @@ Return JSON:
   })
   await recordAnthropicUsage(params.userId, response.usage)
 
-  const text = response.content.find((b) => b.type === 'text')
-  if (!text || text.type !== 'text') throw new Error('No text response from AI')
-
-  const raw = text.text.trim()
-  const jsonStr = raw.startsWith('{') ? raw : raw.match(/\{[\s\S]*\}/)?.[0] ?? raw
-  return JSON.parse(jsonStr) as GeneratedEmailResult
+  return parseJsonFromResponse<GeneratedEmailResult>(response, 'AI')
 }
 
-export type SearchMode = 'all' | 'top10' | 'best3'
+type SearchMode = 'all' | 'top10' | 'best3'
 
 const SEARCH_MODE_PROMPTS: Record<SearchMode, { count: string; instruction: string }> = {
   all: {
@@ -292,33 +283,11 @@ Return JSON with this exact schema:
 }`,
       },
     ],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools: ([
-      {
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 6,
-        allowed_domains: [
-          'linkedin.com',
-          'crunchbase.com',
-          'wellfound.com',
-          'builtin.com',
-          'greenhouse.io',
-          'lever.co',
-          'techcrunch.com',
-        ],
-      },
-    ] as unknown) as Anthropic.Messages.Tool[],
+    tools: webSearchTool(6),
   })
   await recordAnthropicUsage(params.userId, response.usage)
 
-  const textBlocks = response.content.filter(
-    (b): b is Anthropic.TextBlock => b.type === 'text'
-  )
-  const finalText = textBlocks[textBlocks.length - 1]?.text ?? ''
-  const jsonStr = finalText.match(/\{[\s\S]*\}/)?.[0] ?? finalText
-
-  const parsed = JSON.parse(jsonStr) as { companies: CompanyResult[] }
+  const parsed = parseJsonFromWebSearchResponse<{ companies: CompanyResult[] }>(response)
   return parsed.companies ?? []
 }
 
@@ -362,12 +331,7 @@ Skills as a flat array of individual skill strings.`,
   })
   await recordAnthropicUsage(userId, response.usage)
 
-  const text = response.content.find((b) => b.type === 'text')
-  if (!text || text.type !== 'text') throw new Error('No text response from CV parse')
-
-  const raw = text.text.trim()
-  const jsonStr = raw.startsWith('{') ? raw : raw.match(/\{[\s\S]*\}/)?.[0] ?? raw
-  return JSON.parse(jsonStr) as ParsedCV
+  return parseJsonFromResponse<ParsedCV>(response, 'CV parse')
 }
 
 export async function parseCVFromText(cvText: string, userId?: string | null): Promise<ParsedCV> {
@@ -397,12 +361,7 @@ Skills as a flat array of individual skill strings.`,
   })
   await recordAnthropicUsage(userId, response.usage)
 
-  const text = response.content.find((b) => b.type === 'text')
-  if (!text || text.type !== 'text') throw new Error('No text response from CV parse')
-
-  const raw = text.text.trim()
-  const jsonStr = raw.startsWith('{') ? raw : raw.match(/\{[\s\S]*\}/)?.[0] ?? raw
-  return JSON.parse(jsonStr) as ParsedCV
+  return parseJsonFromResponse<ParsedCV>(response, 'CV parse')
 }
 
 // ─── Bulk Re-discovery ───────────────────────────────────────────────────
@@ -420,19 +379,15 @@ export async function discoverSimilarCompanies(params: {
     max_tokens: 4096,
     system: `You are a job market researcher. Find companies similar to the ones provided. Return ONLY valid JSON. No markdown fences.`,
     messages: [{ role: 'user', content: `I've been applying to:\n${companyList}\n\nFind ${params.count ?? 10} MORE similar companies in ${params.region} for: ${params.jobTitle}. Do NOT include companies already listed.\n\nReturn JSON: { "companies": [{ "name":"", "domain":"", "industry":"", "size":"", "description":"", "contactEmail":null, "contactName":null, "linkedIn":null, "matchReason":"" }] }` }],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools: ([{ type: 'web_search_20250305', name: 'web_search', max_uses: 6, allowed_domains: ['linkedin.com','crunchbase.com','wellfound.com','builtin.com','greenhouse.io','lever.co','techcrunch.com'] }] as unknown) as Anthropic.Messages.Tool[],
+    tools: webSearchTool(6),
   })
   await recordAnthropicUsage(params.userId, response.usage)
-  const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
-  const finalText = textBlocks[textBlocks.length - 1]?.text ?? ''
-  const jsonStr = finalText.match(/\{[\s\S]*\}/)?.[0] ?? finalText
-  return (JSON.parse(jsonStr) as { companies: CompanyResult[] }).companies ?? []
+  return parseJsonFromWebSearchResponse<{ companies: CompanyResult[] }>(response).companies ?? []
 }
 
 // ─── Company Enrichment ──────────────────────────────────────────────────
 
-export interface CompanyEnrichment {
+interface CompanyEnrichment {
   techStack: string[]
   recentFunding: string | null
   employeeGrowth: string | null
@@ -448,32 +403,8 @@ export async function enrichCompany(params: { name: string; domain?: string | nu
     max_tokens: 2048,
     system: `You are a company research analyst. Return ONLY valid JSON. No markdown fences.`,
     messages: [{ role: 'user', content: `Research: ${params.name}${params.domain ? ` (${params.domain})` : ''}${params.industry ? `, ${params.industry}` : ''}\n\nReturn JSON: { "techStack":[], "recentFunding":null, "employeeGrowth":null, "glassdoorRating":null, "keyProducts":[], "hiringSignals":[], "summary":"2-3 sentence executive summary for a job applicant" }` }],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tools: ([{ type: 'web_search_20250305', name: 'web_search', max_uses: 4, allowed_domains: ['linkedin.com','crunchbase.com','glassdoor.com','builtin.com','techcrunch.com','github.com'] }] as unknown) as Anthropic.Messages.Tool[],
+    tools: webSearchTool(4, ['linkedin.com', 'crunchbase.com', 'glassdoor.com', 'builtin.com', 'techcrunch.com', 'github.com']),
   })
   await recordAnthropicUsage(params.userId, response.usage)
-  const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
-  const finalText = textBlocks[textBlocks.length - 1]?.text ?? ''
-  const jsonStr = finalText.match(/\{[\s\S]*\}/)?.[0] ?? finalText
-  return JSON.parse(jsonStr) as CompanyEnrichment
+  return parseJsonFromWebSearchResponse<CompanyEnrichment>(response)
 }
-
-// ─── CV Tailoring ────────────────────────────────────────────────────────
-
-export async function tailorCVForCompany(params: {
-  cvText: string; companyName: string; companyDescription?: string | null; companyIndustry?: string | null; jobTitle: string; skills: string[]; userId?: string | null
-}): Promise<{ tailoredSummary: string; emphasizedSkills: string[]; adjustedExperience: string }> {
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    system: `You are a CV optimization expert. Tailor CV focus for a specific company. Do NOT fabricate experience — only re-emphasize existing skills. Return ONLY valid JSON.`,
-    messages: [{ role: 'user', content: `Tailor for ${params.companyName} (${params.companyIndustry ?? ''})${params.companyDescription ? `: ${params.companyDescription.slice(0, 300)}` : ''}. Role: ${params.jobTitle}. Skills: ${params.skills.join(', ')}\n\nCV:\n${params.cvText.slice(0, 2000)}\n\nReturn JSON: { "tailoredSummary":"2-3 sentences", "emphasizedSkills":["top 5-8 relevant skills"], "adjustedExperience":"paragraph highlighting most relevant experience" }` }],
-  })
-  await recordAnthropicUsage(params.userId, response.usage)
-  const text = response.content.find((b) => b.type === 'text')
-  if (!text || text.type !== 'text') throw new Error('No response')
-  const raw = text.text.trim()
-  const jsonStr = raw.startsWith('{') ? raw : raw.match(/\{[\s\S]*\}/)?.[0] ?? raw
-  return JSON.parse(jsonStr)
-}
-

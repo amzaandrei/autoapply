@@ -5,9 +5,10 @@ import LinkedIn from 'next-auth/providers/linkedin'
 import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma, withDbRetry } from '@/lib/prisma'
+import { isAdminEmail } from '@/lib/admin-emails'
 import { authConfig } from './auth.config'
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth } = NextAuth({
   ...authConfig,
   adapter: PrismaAdapter(prisma),
   providers: [
@@ -92,7 +93,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const active = sub && (sub.status === 'ACTIVE' || sub.status === 'TRIALING')
           // Prisma SubscriptionTier maps 1:1 to our local Tier union.
           token.tier = active ? (sub.tier as 'FREE' | 'STARTER' | 'PRO' | 'POWER') : 'FREE'
-          const { isAdminEmail } = await import('@/lib/admin')
           token.isAdmin = isAdminEmail(dbUser?.email ?? (token.email as string | undefined))
         } catch (err) {
           const Sentry = await import('@sentry/nextjs')

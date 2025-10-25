@@ -54,7 +54,7 @@ function extractDomain(url: string): string | null {
 
 // ─── JSearch (RapidAPI) — worldwide ──────────────────────────────────────
 
-export async function searchJSearch(title: string, location: string, count: number = 20): Promise<JobResult[]> {
+async function searchJSearch(title: string, location: string, count: number = 20): Promise<JobResult[]> {
   const apiKey = process.env.RAPIDAPI_KEY
   if (!apiKey) return []
 
@@ -117,7 +117,7 @@ export async function searchJSearch(title: string, location: string, count: numb
 
 // ─── Remotive — remote jobs ─────────────────────────────────────────────
 
-export async function searchRemotive(title: string, count: number = 20): Promise<JobResult[]> {
+async function searchRemotive(title: string, count: number = 20): Promise<JobResult[]> {
   try {
     const res = await fetch(
       `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(title)}&limit=${count}`
@@ -156,7 +156,7 @@ export async function searchRemotive(title: string, count: number = 20): Promise
 
 // ─── Arbeitnow — EU/DACH jobs ──────────────────────────────────────────
 
-export async function searchArbeitnow(title: string, count: number = 20): Promise<JobResult[]> {
+async function searchArbeitnow(title: string, count: number = 20): Promise<JobResult[]> {
   try {
     const res = await fetch('https://www.arbeitnow.com/api/job-board-api')
     if (!res.ok) { console.warn('Arbeitnow API error:', res.status); return [] }
@@ -202,7 +202,7 @@ export async function searchArbeitnow(title: string, count: number = 20): Promis
 
 // ─── The Muse — curated tech companies ──────────────────────────────────
 
-export async function searchTheMuse(title: string, location: string, count: number = 20): Promise<JobResult[]> {
+async function searchTheMuse(title: string, location: string, count: number = 20): Promise<JobResult[]> {
   try {
     const params = new URLSearchParams()
     params.set('page', '0')
@@ -284,7 +284,7 @@ interface ATSJob {
   postedAt: string | null
 }
 
-export async function fetchGreenhouseJobs(companyName: string): Promise<ATSJob[]> {
+async function fetchGreenhouseJobs(companyName: string): Promise<ATSJob[]> {
   for (const slug of companyToSlug(companyName)) {
     try {
       const res = await fetch(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`)
@@ -307,7 +307,7 @@ export async function fetchGreenhouseJobs(companyName: string): Promise<ATSJob[]
   return []
 }
 
-export async function fetchLeverJobs(companyName: string): Promise<ATSJob[]> {
+async function fetchLeverJobs(companyName: string): Promise<ATSJob[]> {
   for (const slug of companyToSlug(companyName)) {
     try {
       const res = await fetch(`https://api.lever.co/v0/postings/${slug}?mode=json`)
@@ -327,7 +327,7 @@ export async function fetchLeverJobs(companyName: string): Promise<ATSJob[]> {
   return []
 }
 
-export async function fetchAshbyJobs(companyName: string): Promise<ATSJob[]> {
+async function fetchAshbyJobs(companyName: string): Promise<ATSJob[]> {
   for (const slug of companyToSlug(companyName)) {
     try {
       const res = await fetch(`https://api.ashbyhq.com/posting-api/job-board/${slug}`)
@@ -354,7 +354,7 @@ export async function fetchAshbyJobs(companyName: string): Promise<ATSJob[]> {
  * Try all three ATS platforms. Returns the first one that has jobs, or empty array.
  * Good for verifying a specific company has current openings.
  */
-export async function fetchATSJobs(companyName: string): Promise<{ source: 'greenhouse' | 'lever' | 'ashby' | null; jobs: ATSJob[] }> {
+async function fetchATSJobs(companyName: string): Promise<{ source: 'greenhouse' | 'lever' | 'ashby' | null; jobs: ATSJob[] }> {
   const [gh, lever, ashby] = await Promise.all([
     fetchGreenhouseJobs(companyName),
     fetchLeverJobs(companyName),

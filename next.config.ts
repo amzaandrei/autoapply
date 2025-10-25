@@ -1,8 +1,12 @@
 import type { NextConfig } from 'next'
 import { withSentryConfig } from '@sentry/nextjs'
+import path from 'node:path'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  // Pin workspace root: a stray package.json in ~/ (from a global fallow install)
+  // makes Next.js infer /Users/claw as the root and break module resolution.
+  turbopack: { root: path.resolve(__dirname) },
   // Force Node-only packages to stay on the server — prevents the bundler
   // from trying to pull pg/fs/net/tls/dns into a client chunk if any client
   // component accidentally imports server-only code via a transitive path.

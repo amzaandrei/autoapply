@@ -17,10 +17,7 @@ import {
   type UsageAction,
 } from './tier-limits'
 
-// Re-export constants so existing `import { FREE_TIER } from '@/lib/entitlements'`
-// calls keep working on the server side.
-export { FREE_TIER, STARTER_TIER, PRO_TIER, POWER_TIER, limitsFor, tierRank, hasTierAtLeast }
-export type { Tier, TierLimits, UsageAction }
+export { limitsFor, hasTierAtLeast }
 
 function currentMonth(): string {
   const d = new Date()
@@ -48,7 +45,7 @@ export async function getTier(userId: string): Promise<Tier> {
   return sub.tier as Tier
 }
 
-export async function getEntitlements(userId: string): Promise<TierLimits & { tier: Tier }> {
+async function getEntitlements(userId: string): Promise<TierLimits & { tier: Tier }> {
   const tier = await getTier(userId)
   return { tier, ...limitsFor(tier) }
 }
@@ -74,7 +71,7 @@ function limitForAction(tier: Tier, action: UsageAction): number {
   }
 }
 
-export interface QuotaResult {
+interface QuotaResult {
   allowed: boolean
   remaining: number
   limit: number
@@ -114,7 +111,7 @@ export async function incrementUsage(
   })
 }
 
-export async function requirePro(userId: string, featureLabel = 'This feature'): Promise<void> {
+async function requirePro(userId: string, featureLabel = 'This feature'): Promise<void> {
   const tier = await getTier(userId)
   if (!hasTierAtLeast(tier, 'PRO')) {
     throw new TRPCError({
@@ -124,7 +121,7 @@ export async function requirePro(userId: string, featureLabel = 'This feature'):
   }
 }
 
-export async function requirePaid(userId: string, featureLabel = 'This feature'): Promise<void> {
+async function requirePaid(userId: string, featureLabel = 'This feature'): Promise<void> {
   const tier = await getTier(userId)
   if (!hasTierAtLeast(tier, 'STARTER')) {
     throw new TRPCError({

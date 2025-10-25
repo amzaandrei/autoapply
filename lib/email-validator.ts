@@ -17,7 +17,7 @@ const BLOCKED_DOMAINS = new Set([
   'invalid.com',
 ])
 
-export interface ValidationResult {
+interface ValidationResult {
   email: string
   valid: boolean
   reason?: string
@@ -58,6 +58,6 @@ export async function validateEmail(email: string): Promise<ValidationResult> {
 }
 
 // Validate multiple emails in parallel
-export async function validateEmails(emails: string[]): Promise<ValidationResult[]> {
+async function validateEmails(emails: string[]): Promise<ValidationResult[]> {
   return Promise.all(emails.map(validateEmail))
 }

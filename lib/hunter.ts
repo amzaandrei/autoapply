@@ -35,7 +35,7 @@ async function recordHunterEnrichment(userId: string | null | undefined): Promis
   }
 }
 
-export interface HunterEmail {
+interface HunterEmail {
   value: string
   type: 'personal' | 'generic'
   confidence: number
@@ -45,7 +45,7 @@ export interface HunterEmail {
   last_name?: string
 }
 
-export interface HunterDomainResult {
+interface HunterDomainResult {
   domain: string | null
   organization: string | null
   emails: HunterEmail[]
@@ -58,7 +58,7 @@ export interface HunterDomainResult {
  * web-search fallback for companies that exist in Hunter's database.
  * Prioritizes generic hiring emails (careers@, jobs@, hr@) if present.
  */
-export async function hunterDomainSearch(input: {
+async function hunterDomainSearch(input: {
   domain?: string | null
   companyName?: string | null
   userId?: string | null
@@ -143,7 +143,7 @@ export type HunterVerifyStatus =
   | 'unknown'        // Hunter couldn't decide
   | 'error'          // network / quota / auth failure
 
-export interface HunterVerifyResult {
+interface HunterVerifyResult {
   email: string
   status: HunterVerifyStatus
   score: number // 0-100; Hunter's deliverability confidence
@@ -165,7 +165,7 @@ export interface HunterVerifyResult {
  */
 // ─── Email Finder (name → verified email) ──────────────────────────────────
 
-export interface HunterEmailFinderResult {
+interface HunterEmailFinderResult {
   email: string
   score: number
   domain: string | null

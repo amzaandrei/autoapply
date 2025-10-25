@@ -15,7 +15,7 @@ function getServerClient(): PostHog | null {
   return serverClient
 }
 
-export type AnalyticsEvent =
+type AnalyticsEvent =
   | 'signed_up'
   | 'campaign_created'
   | 'companies_discovered'
@@ -41,7 +41,7 @@ export function track(
   }
 }
 
-export function identify(distinctId: string, traits?: Record<string, unknown>): void {
+function identify(distinctId: string, traits?: Record<string, unknown>): void {
   const client = getServerClient()
   if (!client) return
   try {
@@ -51,7 +51,7 @@ export function identify(distinctId: string, traits?: Record<string, unknown>): 
   }
 }
 
-export async function flushAnalytics(): Promise<void> {
+async function flushAnalytics(): Promise<void> {
   const client = getServerClient()
   if (!client) return
   try {

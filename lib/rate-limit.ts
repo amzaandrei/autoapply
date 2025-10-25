@@ -22,7 +22,7 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref?.()
 
-export interface RateLimitResult {
+interface RateLimitResult {
   allowed: boolean
   remaining: number
   resetIn: number
@@ -143,7 +143,7 @@ export function rateLimitBulk(
  * Redis-backed async versions. Prefer these in new code. If REDIS_URL is not
  * set, they fall back to in-memory automatically.
  */
-export async function rateLimitAsync(
+async function rateLimitAsync(
   key: string,
   limit: number,
   windowMs: number,
@@ -151,7 +151,7 @@ export async function rateLimitAsync(
   return redisRateLimit(key, limit, windowMs)
 }
 
-export async function rateLimitBulkAsync(
+async function rateLimitBulkAsync(
   key: string,
   count: number,
   limit: number,

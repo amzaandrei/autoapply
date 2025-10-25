@@ -3,25 +3,12 @@
  * (comma-separated). Keeps auth out of the DB so adding/removing admins
  * doesn't require a migration — just a deploy.
  *
- * Safe to import from client components (only exports a pure function).
- * For server-only session checks, use `requireAdmin()`.
+ * For the pure email-allowlist check (no auth dependency, safe for client
+ * code), use `lib/admin-emails.ts`. This file pulls in `auth()` for
+ * server-only session checks.
  */
 import { auth } from '@/auth'
-
-function adminEmails(): Set<string> {
-  const raw = process.env.ADMIN_EMAILS ?? ''
-  return new Set(
-    raw
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean),
-  )
-}
-
-export function isAdminEmail(email: string | null | undefined): boolean {
-  if (!email) return false
-  return adminEmails().has(email.toLowerCase())
-}
+import { isAdminEmail } from './admin-emails'
 
 /**
  * Gate a server route/component on admin status. Returns the session user
