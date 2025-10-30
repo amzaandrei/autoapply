@@ -1,19 +1,6 @@
 import { google } from 'googleapis'
 import type { OAuth2Client } from 'google-auth-library'
-
-function toHtml(text: string): string {
-  // HTML-escape before wrapping to avoid injection via email body.
-  const escaped = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-  return escaped
-    .split(/\n\n+/)
-    .map(para => `<p style="margin:0 0 14px 0;line-height:1.6;">${para.replace(/\n/g, '<br>')}</p>`)
-    .join('')
-}
+import { plainTextToHtml } from './email-html'
 
 export function getOAuth2Client(): OAuth2Client {
   return new google.auth.OAuth2(
@@ -52,17 +39,42 @@ export async function exchangeCode(code: string): Promise<GmailTokens> {
   }
 }
 
+/**
+ * Thrown when Google rejects a refresh token (invalid_grant). The user must
+ * re-run the OAuth consent flow — the stored refresh token is no longer
+ * usable. Callers should delete the GmailToken row and surface a reconnect
+ * prompt to the UI.
+ */
+export class GmailReauthRequiredError extends Error {
+  constructor(message = 'Gmail refresh token has been revoked or expired') {
+    super(message)
+    this.name = 'GmailReauthRequiredError'
+  }
+}
+
+function isInvalidGrant(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { response?: { data?: { error?: string } }; message?: string }
+  return e.response?.data?.error === 'invalid_grant' || (e.message ?? '').includes('invalid_grant')
+}
+
 export async function refreshAccessToken(refreshToken: string): Promise<GmailTokens> {
   const oauth2Client = getOAuth2Client()
   oauth2Client.setCredentials({ refresh_token: refreshToken })
-  const { credentials } = await oauth2Client.refreshAccessToken()
+  try {
+    const { credentials } = await oauth2Client.refreshAccessToken()
 
-  return {
-    accessToken: credentials.access_token ?? '',
-    refreshToken: credentials.refresh_token ?? refreshToken,
-    expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
+    return {
+      accessToken: credentials.access_token ?? '',
+      refreshToken: credentials.refresh_token ?? refreshToken,
+      expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : null,
+    }
+  } catch (err) {
+    if (isInvalidGrant(err)) throw new GmailReauthRequiredError()
+    throw err
   }
 }
+
 
 interface SendEmailParams {
   from?: string
@@ -137,7 +149,7 @@ function buildRawEmail(params: SendEmailParams): string {
   if (inReplyTo) headers.push(`In-Reply-To: <${inReplyTo}>`)
   if (references) headers.push(`References: <${references}>`)
 
-  const htmlContent = injectTrackingPixel(toHtml(body), emailId)
+  const htmlContent = injectTrackingPixel(plainTextToHtml(body), emailId)
   const plainText = body
 
   if (!cvPdfBase64) {

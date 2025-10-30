@@ -4,6 +4,22 @@ import { prisma } from '@/lib/prisma'
 import { TRPCError } from '@trpc/server'
 import { getTier, limitsFor } from '@/lib/entitlements'
 import { track } from '@/lib/analytics'
+import { findOwnedCampaign } from '../utils'
+
+const campaignBaseFields = z.object({
+  description: z.string().optional(),
+  jobTitle: z.string().optional(),
+  industry: z.string().optional(),
+  region: z.string().optional(),
+  useEmailTemplate: z.boolean().optional(),
+  followUpEnabled: z.boolean().optional(),
+  followUpDelayDays: z.number().int().min(1).max(30).optional(),
+  maxFollowUps: z.number().int().min(1).max(3).optional(),
+  abTestEnabled: z.boolean().optional(),
+  abToneA: z.enum(['concise', 'balanced', 'detailed']).optional(),
+  abToneB: z.enum(['concise', 'balanced', 'detailed']).optional(),
+  attachCv: z.boolean().optional(),
+})
 
 export const campaignsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -31,20 +47,8 @@ export const campaignsRouter = router({
     }),
 
   create: protectedProcedure
-    .input(z.object({
+    .input(campaignBaseFields.extend({
       name: z.string().min(1),
-      description: z.string().optional(),
-      jobTitle: z.string().optional(),
-      industry: z.string().optional(),
-      region: z.string().optional(),
-      useEmailTemplate: z.boolean().optional(),
-      followUpEnabled: z.boolean().optional(),
-      followUpDelayDays: z.number().int().min(1).max(30).optional(),
-      maxFollowUps: z.number().int().min(1).max(3).optional(),
-      abTestEnabled: z.boolean().optional(),
-      abToneA: z.enum(['concise', 'balanced', 'detailed']).optional(),
-      abToneB: z.enum(['concise', 'balanced', 'detailed']).optional(),
-      attachCv: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id
@@ -67,39 +71,21 @@ export const campaignsRouter = router({
     }),
 
   update: protectedProcedure
-    .input(z.object({
+    .input(campaignBaseFields.extend({
       id: z.string(),
       name: z.string().min(1).optional(),
-      description: z.string().optional(),
-      jobTitle: z.string().optional(),
-      industry: z.string().optional(),
-      region: z.string().optional(),
-      useEmailTemplate: z.boolean().optional(),
-      followUpEnabled: z.boolean().optional(),
-      followUpDelayDays: z.number().int().min(1).max(30).optional(),
-      maxFollowUps: z.number().int().min(1).max(3).optional(),
-      abTestEnabled: z.boolean().optional(),
-      abToneA: z.enum(['concise', 'balanced', 'detailed']).optional(),
-      abToneB: z.enum(['concise', 'balanced', 'detailed']).optional(),
-      attachCv: z.boolean().optional(),
       status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED']).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input
-      const existing = await prisma.campaign.findFirst({
-        where: { id, userId: ctx.session.user.id },
-      })
-      if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
+      await findOwnedCampaign(id, ctx.session.user.id)
       return prisma.campaign.update({ where: { id }, data })
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const existing = await prisma.campaign.findFirst({
-        where: { id: input.id, userId: ctx.session.user.id },
-      })
-      if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
+      await findOwnedCampaign(input.id, ctx.session.user.id)
       return prisma.campaign.delete({ where: { id: input.id } })
     }),
 })

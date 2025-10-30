@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
-import { refreshAccessToken, getOAuth2Client } from '@/lib/gmail'
+import { getOAuth2Client } from '@/lib/gmail'
+import { resolveGmailAccessToken } from '@/lib/gmail-token'
+import { withAuthNoReq } from '@/lib/api-auth'
 import { google } from 'googleapis'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -18,24 +19,11 @@ interface CalendarEvent {
   raw: string
 }
 
-export async function POST() {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
+export const POST = withAuthNoReq(async ({ userId }) => {
   try {
-    const gmailToken = await prisma.gmailToken.findUnique({ where: { userId: session.user.id } })
-    if (!gmailToken) return NextResponse.json({ error: 'Gmail not connected' }, { status: 400 })
-
-    let accessToken = gmailToken.accessToken
-    const expiresAt = gmailToken.expiresAt ? new Date(gmailToken.expiresAt).getTime() : 0
-    if (expiresAt > 0 && Date.now() > expiresAt - 60_000 && gmailToken.refreshToken) {
-      const refreshed = await refreshAccessToken(gmailToken.refreshToken)
-      accessToken = refreshed.accessToken
-      await prisma.gmailToken.update({
-        where: { userId: session.user.id },
-        data: { accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken ?? gmailToken.refreshToken, expiresAt: refreshed.expiresAt },
-      })
-    }
+    const tokenResult = await resolveGmailAccessToken(userId)
+    if (!tokenResult.ok) return tokenResult.response
+    const { accessToken } = tokenResult
 
     const oauth2Client = getOAuth2Client()
     oauth2Client.setCredentials({ access_token: accessToken })
@@ -43,7 +31,7 @@ export async function POST() {
 
     // Get replied emails to check their threads for interview invites
     const repliedEmails = await prisma.generatedEmail.findMany({
-      where: { campaign: { userId: session.user.id }, status: 'REPLIED', gmailThreadId: { not: null } },
+      where: { campaign: { userId: userId }, status: 'REPLIED', gmailThreadId: { not: null } },
       include: { company: { select: { name: true, contactEmail: true } } },
       take: 20,
     })
@@ -57,7 +45,7 @@ export async function POST() {
         const messages = thread.data.messages ?? []
 
         // Get the latest reply content from the company
-        const userEmail = (await prisma.user.findUnique({ where: { id: session.user.id }, select: { email: true } }))?.email?.toLowerCase() ?? ''
+        const userEmail = (await prisma.user.findUnique({ where: { id: userId }, select: { email: true } }))?.email?.toLowerCase() ?? ''
         const companyReplies = messages.filter((msg) => {
           const from = msg.payload?.headers?.find((h) => h.name?.toLowerCase() === 'from')?.value?.toLowerCase() ?? ''
           return !from.includes(userEmail)
@@ -120,4 +108,4 @@ export async function POST() {
     const message = err instanceof Error ? err.message : 'Failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }
-}
+})

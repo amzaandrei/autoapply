@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { stripe, planForPriceId } from '@/lib/stripe'
 import { logger } from '@/lib/logger'
+import { withAuthNoReq } from '@/lib/api-auth'
 import type { Tier } from '@/lib/tier-limits'
 
 export const runtime = 'nodejs'
@@ -13,14 +13,9 @@ export const dynamic = 'force-dynamic'
  * Used by the billing page after a successful checkout redirect — avoids
  * depending on the webhook race (works even if `stripe listen` isn't running).
  */
-export async function POST() {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+export const POST = withAuthNoReq(async ({ userId }) => {
   const local = await prisma.subscription.findUnique({
-    where: { userId: session.user.id },
+    where: { userId },
     select: { stripeCustomerId: true, tier: true, status: true },
   })
 
@@ -29,7 +24,6 @@ export async function POST() {
   }
 
   try {
-    // Get the most recent subscription for this customer
     const subs = await stripe().subscriptions.list({
       customer: local.stripeCustomerId,
       status: 'all',
@@ -67,7 +61,7 @@ export async function POST() {
     }
 
     await prisma.subscription.update({
-      where: { userId: session.user.id },
+      where: { userId },
       data: {
         tier: newTier,
         status: mapStatus(sub.status),
@@ -81,7 +75,7 @@ export async function POST() {
 
     return NextResponse.json({ tier: newTier, synced: true, status: sub.status })
   } catch (err) {
-    logger.error({ err, userId: session.user.id }, 'billing sync failed')
+    logger.error({ err, userId }, 'billing sync failed')
     return NextResponse.json({ tier: local.tier, synced: false, error: 'Sync failed' }, { status: 500 })
   }
-}
+})

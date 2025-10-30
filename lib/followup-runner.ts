@@ -1,9 +1,10 @@
 import { prisma } from './prisma'
 import { generateFollowUp } from './ai'
-import { sendGmailEmail, refreshAccessToken } from './gmail'
+import { sendGmailEmail } from './gmail'
+import { getGmailAccessTokenForUser, GmailNotConnectedError } from './gmail-token'
 import { getTier, limitsFor, incrementUsage } from './entitlements'
 
-export interface FollowUpResult {
+interface FollowUpResult {
   emailId: string
   companyName: string
   sequence: number
@@ -11,7 +12,7 @@ export interface FollowUpResult {
   error?: string
 }
 
-export interface FollowUpRunSummary {
+interface FollowUpRunSummary {
   processed: number
   sent: number
   failed: number
@@ -27,23 +28,12 @@ export async function processFollowUpsForUser(userId: string): Promise<FollowUpR
     return { ...empty, skipped: 'not_pro' }
   }
 
-  const gmailToken = await prisma.gmailToken.findUnique({ where: { userId } })
-  if (!gmailToken) return { ...empty, skipped: 'no_gmail' }
-
-  let accessToken = gmailToken.accessToken
-  const isExpired =
-    gmailToken.expiresAt && new Date() > new Date(gmailToken.expiresAt.getTime() - 60_000)
-  if (isExpired && gmailToken.refreshToken) {
-    const refreshed = await refreshAccessToken(gmailToken.refreshToken)
-    accessToken = refreshed.accessToken
-    await prisma.gmailToken.update({
-      where: { userId },
-      data: {
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken ?? gmailToken.refreshToken,
-        expiresAt: refreshed.expiresAt,
-      },
-    })
+  let accessToken: string
+  try {
+    accessToken = await getGmailAccessTokenForUser(userId)
+  } catch (err) {
+    if (err instanceof GmailNotConnectedError) return { ...empty, skipped: 'no_gmail' }
+    throw err
   }
 
   const [user, profile] = await Promise.all([

@@ -28,10 +28,21 @@ interface RateLimitResult {
   resetIn: number
 }
 
-function memRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
+/**
+ * Look up (or create) the in-memory bucket for `key`, drop entries that fell
+ * outside the rolling window, and return both the current timestamp and the
+ * mutated bucket. Single-vs-bulk callers diverge only on the limit check, so
+ * pulling this prologue out keeps the two memRateLimit* paths in sync.
+ */
+function activeBucket(key: string, windowMs: number): { now: number; bucket: Bucket } {
   const now = Date.now()
   const bucket = buckets.get(key) ?? { timestamps: [] }
   bucket.timestamps = bucket.timestamps.filter((t) => now - t < windowMs)
+  return { now, bucket }
+}
+
+function memRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
+  const { now, bucket } = activeBucket(key, windowMs)
 
   if (bucket.timestamps.length >= limit) {
     const oldest = bucket.timestamps[0]
@@ -52,9 +63,7 @@ function memRateLimit(key: string, limit: number, windowMs: number): RateLimitRe
 }
 
 function memRateLimitBulk(key: string, count: number, limit: number, windowMs: number): RateLimitResult {
-  const now = Date.now()
-  const bucket = buckets.get(key) ?? { timestamps: [] }
-  bucket.timestamps = bucket.timestamps.filter((t) => now - t < windowMs)
+  const { now, bucket } = activeBucket(key, windowMs)
 
   if (bucket.timestamps.length + count > limit) {
     return {

@@ -1,14 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/auth'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { withAuthParams } from '@/lib/api-auth'
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { id } = await params
+export const GET = withAuthParams<{ id: string }, NextResponse>(async (_req, { userId, params }) => {
+  const { id } = params
   const campaign = await prisma.campaign.findFirst({
-    where: { id, userId: session.user.id },
+    where: { id, userId },
     include: {
       companies: {
         include: { emails: { orderBy: { createdAt: 'desc' }, take: 1 } },
@@ -54,4 +51,4 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       'Content-Disposition': `attachment; filename="${campaign.name.replace(/[^a-zA-Z0-9]/g, '_')}_export.csv"`,
     },
   })
-}
+})

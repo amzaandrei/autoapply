@@ -1,19 +1,14 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { stripe, appUrl } from '@/lib/stripe'
+import { withAuthNoReq } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function POST() {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+export const POST = withAuthNoReq(async ({ userId }) => {
   const sub = await prisma.subscription.findUnique({
-    where: { userId: session.user.id },
+    where: { userId },
     select: { stripeCustomerId: true },
   })
   if (!sub?.stripeCustomerId) {
@@ -26,4 +21,4 @@ export async function POST() {
   })
 
   return NextResponse.json({ url: portal.url })
-}
+})

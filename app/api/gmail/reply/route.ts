@@ -1,12 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/auth'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { sendGmailEmail, refreshAccessToken } from '@/lib/gmail'
+import { sendGmailEmail } from '@/lib/gmail'
+import { resolveOwnedThread } from '@/lib/gmail-token'
+import { withAuth } from '@/lib/api-auth'
 
-export async function POST(request: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
+export const POST = withAuth(async (request, { userId }) => {
   const body = await request.json() as {
     threadId: string
     inReplyTo: string
@@ -19,29 +17,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'threadId, to, and body are required' }, { status: 400 })
   }
 
-  // Verify thread belongs to user
-  const email = await prisma.generatedEmail.findFirst({
-    where: { gmailThreadId: body.threadId, campaign: { userId: session.user.id } },
-  })
-  if (!email) return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
-
-  const gmailToken = await prisma.gmailToken.findUnique({ where: { userId: session.user.id } })
-  if (!gmailToken) return NextResponse.json({ error: 'Gmail not connected' }, { status: 400 })
-
-  let accessToken = gmailToken.accessToken
-  const isExpired = gmailToken.expiresAt && new Date() > new Date(gmailToken.expiresAt.getTime() - 60_000)
-  if (isExpired && gmailToken.refreshToken) {
-    const refreshed = await refreshAccessToken(gmailToken.refreshToken)
-    accessToken = refreshed.accessToken
-    await prisma.gmailToken.update({
-      where: { userId: session.user.id },
-      data: { accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken ?? gmailToken.refreshToken, expiresAt: refreshed.expiresAt },
-    })
-  }
+  const thread = await resolveOwnedThread(body.threadId, userId)
+  if (!thread.ok) return thread.response
+  const { accessToken } = thread
 
   try {
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: userId },
       select: { name: true, email: true },
     })
     const fromHeader = user?.name ? `${user.name} <${user.email}>` : user?.email ?? ''
@@ -63,4 +45,4 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : 'Failed to send reply'
     return NextResponse.json({ error: message }, { status: 500 })
   }
-}
+})

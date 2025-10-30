@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { X } from 'lucide-react'
+import { useAutocomplete } from './use-autocomplete'
 
 interface MultiSelectInputProps {
   selected: string[]
@@ -13,29 +14,12 @@ interface MultiSelectInputProps {
 
 export function MultiSelectInput({ selected, onChange, suggestions, placeholder }: MultiSelectInputProps) {
   const [inputValue, setInputValue] = useState('')
-  const [open, setOpen] = useState(false)
-  const [highlightIdx, setHighlightIdx] = useState(-1)
-  const wrapperRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const filtered = suggestions
     .filter((s) => !selected.includes(s))
     .filter((s) => !inputValue.trim() || s.toLowerCase().includes(inputValue.toLowerCase()))
     .slice(0, 8)
-
-  const showDropdown = open && filtered.length > 0
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  useEffect(() => { setHighlightIdx(-1) }, [filtered.length, inputValue])
 
   const addItem = useCallback((item: string) => {
     onChange([...selected, item])
@@ -47,25 +31,12 @@ export function MultiSelectInput({ selected, onChange, suggestions, placeholder 
     onChange(selected.filter((s) => s !== item))
   }, [selected, onChange])
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !inputValue && selected.length > 0) {
-      removeItem(selected[selected.length - 1])
-      return
-    }
-    if (!showDropdown) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setHighlightIdx((prev) => (prev + 1) % filtered.length)
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setHighlightIdx((prev) => (prev <= 0 ? filtered.length - 1 : prev - 1))
-    } else if (e.key === 'Enter' && highlightIdx >= 0) {
-      e.preventDefault()
-      addItem(filtered[highlightIdx])
-    } else if (e.key === 'Escape') {
-      setOpen(false)
-    }
-  }, [showDropdown, highlightIdx, filtered, addItem, inputValue, selected, removeItem])
+  const { setOpen, highlightIdx, setHighlightIdx, wrapperRef, showDropdown, handleKeyDown } = useAutocomplete({
+    filteredCount: filtered.length,
+    onSelect: (i) => addItem(filtered[i]),
+    onBackspaceEmpty: () => { if (selected.length > 0) removeItem(selected[selected.length - 1]) },
+    isInputEmpty: () => !inputValue,
+  })
 
   return (
     <div ref={wrapperRef} className="relative">

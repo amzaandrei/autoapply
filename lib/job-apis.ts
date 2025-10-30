@@ -284,70 +284,74 @@ interface ATSJob {
   postedAt: string | null
 }
 
-async function fetchGreenhouseJobs(companyName: string): Promise<ATSJob[]> {
+/**
+ * Walks the candidate slugs for a company, hitting the ATS endpoint for each,
+ * and returns the first non-empty list mapped into the common ATSJob shape.
+ * Centralizes the "try slugs in order, swallow per-slug failures" loop that
+ * Greenhouse/Lever/Ashby would otherwise each duplicate.
+ */
+async function fetchAtsJobsBySlug<TRaw>(
+  companyName: string,
+  buildUrl: (slug: string) => string,
+  extractJobs: (data: unknown) => TRaw[],
+  toJob: (raw: TRaw) => ATSJob,
+): Promise<ATSJob[]> {
   for (const slug of companyToSlug(companyName)) {
     try {
-      const res = await fetch(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`)
+      const res = await fetch(buildUrl(slug))
       if (!res.ok) continue
-      const data = await res.json() as {
-        jobs?: Array<{
-          title?: string; location?: { name?: string }; absolute_url?: string; updated_at?: string
-        }>
-      }
-      const jobs = data.jobs ?? []
+      const data: unknown = await res.json()
+      const jobs = extractJobs(data)
       if (jobs.length === 0) continue
-      return jobs.map((j) => ({
-        title: j.title ?? '',
-        location: j.location?.name ?? '',
-        url: j.absolute_url ?? '',
-        postedAt: j.updated_at ?? null,
-      }))
+      return jobs.map(toJob)
     } catch { continue }
   }
   return []
+}
+
+async function fetchGreenhouseJobs(companyName: string): Promise<ATSJob[]> {
+  type Raw = { title?: string; location?: { name?: string }; absolute_url?: string; updated_at?: string }
+  return fetchAtsJobsBySlug<Raw>(
+    companyName,
+    (slug) => `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`,
+    (data) => (data as { jobs?: Raw[] }).jobs ?? [],
+    (j) => ({
+      title: j.title ?? '',
+      location: j.location?.name ?? '',
+      url: j.absolute_url ?? '',
+      postedAt: j.updated_at ?? null,
+    }),
+  )
 }
 
 async function fetchLeverJobs(companyName: string): Promise<ATSJob[]> {
-  for (const slug of companyToSlug(companyName)) {
-    try {
-      const res = await fetch(`https://api.lever.co/v0/postings/${slug}?mode=json`)
-      if (!res.ok) continue
-      const data = await res.json() as Array<{
-        text?: string; categories?: { location?: string }; hostedUrl?: string; createdAt?: number
-      }>
-      if (!Array.isArray(data) || data.length === 0) continue
-      return data.map((j) => ({
-        title: j.text ?? '',
-        location: j.categories?.location ?? '',
-        url: j.hostedUrl ?? '',
-        postedAt: j.createdAt ? new Date(j.createdAt).toISOString() : null,
-      }))
-    } catch { continue }
-  }
-  return []
+  type Raw = { text?: string; categories?: { location?: string }; hostedUrl?: string; createdAt?: number }
+  return fetchAtsJobsBySlug<Raw>(
+    companyName,
+    (slug) => `https://api.lever.co/v0/postings/${slug}?mode=json`,
+    (data) => (Array.isArray(data) ? (data as Raw[]) : []),
+    (j) => ({
+      title: j.text ?? '',
+      location: j.categories?.location ?? '',
+      url: j.hostedUrl ?? '',
+      postedAt: j.createdAt ? new Date(j.createdAt).toISOString() : null,
+    }),
+  )
 }
 
 async function fetchAshbyJobs(companyName: string): Promise<ATSJob[]> {
-  for (const slug of companyToSlug(companyName)) {
-    try {
-      const res = await fetch(`https://api.ashbyhq.com/posting-api/job-board/${slug}`)
-      if (!res.ok) continue
-      const data = await res.json() as {
-        jobs?: Array<{
-          title?: string; locationName?: string; jobUrl?: string; publishedDate?: string
-        }>
-      }
-      const jobs = data.jobs ?? []
-      if (jobs.length === 0) continue
-      return jobs.map((j) => ({
-        title: j.title ?? '',
-        location: j.locationName ?? '',
-        url: j.jobUrl ?? '',
-        postedAt: j.publishedDate ?? null,
-      }))
-    } catch { continue }
-  }
-  return []
+  type Raw = { title?: string; locationName?: string; jobUrl?: string; publishedDate?: string }
+  return fetchAtsJobsBySlug<Raw>(
+    companyName,
+    (slug) => `https://api.ashbyhq.com/posting-api/job-board/${slug}`,
+    (data) => (data as { jobs?: Raw[] }).jobs ?? [],
+    (j) => ({
+      title: j.title ?? '',
+      location: j.locationName ?? '',
+      url: j.jobUrl ?? '',
+      postedAt: j.publishedDate ?? null,
+    }),
+  )
 }
 
 /**

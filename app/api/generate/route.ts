@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/auth'
+import { NextResponse } from 'next/server'
+import type { Company, UserProfile } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { generateEmail, type EmailTone } from '@/lib/ai'
 import { resolveContactEmail } from '@/lib/contact-resolver'
@@ -7,13 +7,40 @@ import { rateLimit, rateLimitBulk } from '@/lib/rate-limit'
 import { randomUUID } from 'crypto'
 import { checkQuota, incrementUsage } from '@/lib/entitlements'
 import { track } from '@/lib/analytics'
+import { withAuth } from '@/lib/api-auth'
 
-export async function POST(request: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+function withSignature(body: string, signatureBlock: string): string {
+  return signatureBlock ? `${body}\n${signatureBlock}` : body
+}
 
+function runGenerateEmail(
+  company: Company,
+  cvText: string,
+  skills: UserProfile['skills'],
+  jobTitle: string,
+  tone: EmailTone | undefined,
+  hint: string | undefined,
+  userId: string,
+) {
+  return generateEmail({
+    cvText,
+    jobTitle,
+    companyName: company.name,
+    companyIndustry: company.industry,
+    companyDescription: company.description,
+    companySize: company.size,
+    contactName: company.contactName,
+    yearFounded: company.yearFounded,
+    country: company.country,
+    techStack: company.techStack,
+    skills: skills ?? [],
+    tone,
+    hint,
+    userId,
+  })
+}
+
+export const POST = withAuth(async (request, { userId }) => {
   try {
     const body = await request.json() as { campaignId: string; companyId?: string; tone?: 'concise' | 'balanced' | 'detailed'; hint?: string }
     const { campaignId, companyId, tone, hint } = body
@@ -24,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     // Verify campaign belongs to user
     const campaign = await prisma.campaign.findFirst({
-      where: { id: campaignId, userId: session.user.id },
+      where: { id: campaignId, userId: userId },
       include: {
         companies: {
           where: {
@@ -40,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     const profile = await prisma.userProfile.findUnique({
-      where: { userId: session.user.id },
+      where: { userId: userId },
     })
 
     if (!profile?.cvText) {
@@ -59,7 +86,7 @@ export async function POST(request: NextRequest) {
     // Estimate only the companies that would actually hit the AI (skip ones without any email)
     const eligibleCompanies = campaign.companies.filter((c) => c.contactEmail)
     const estimatedCalls = eligibleCompanies.length * (campaign.abTestEnabled && !campaign.useEmailTemplate ? 2 : 1)
-    const limit = rateLimitBulk(`generate:${session.user.id}`, estimatedCalls, 200, 60 * 60 * 1000)
+    const limit = rateLimitBulk(`generate:${userId}`, estimatedCalls, 200, 60 * 60 * 1000)
     if (!limit.allowed) {
       return NextResponse.json({
         error: `Rate limit: you've generated too many emails recently. Try again in ${Math.ceil(limit.resetIn / 60)} minutes.`,
@@ -67,7 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Plan quota: monthly AI generations cap
-    const quota = await checkQuota(session.user.id, 'ai_generation', estimatedCalls)
+    const quota = await checkQuota(userId, 'ai_generation', estimatedCalls)
     if (!quota.allowed) {
       return NextResponse.json({
         error: `Monthly AI generation limit reached (${quota.limit}/month on ${quota.tier}). You have ${quota.remaining} left. Upgrade to Pro for unlimited generations.`,
@@ -92,13 +119,13 @@ export async function POST(request: NextRequest) {
     const verdictByCompanyId = new Map<string, Awaited<ReturnType<typeof resolveContactEmail>>>()
     for (const c of campaign.companies) {
       if (!c.contactEmail) continue
-      verdictByCompanyId.set(c.id, await resolveContactEmail(c, session.user.id))
+      verdictByCompanyId.set(c.id, await resolveContactEmail(c, userId))
     }
 
     // Get emails already sent across ALL campaigns
     const alreadySent = await prisma.generatedEmail.findMany({
       where: {
-        campaign: { userId: session.user.id },
+        campaign: { userId: userId },
         status: { in: ['SENT', 'OPENED', 'REPLIED'] },
       },
       select: { company: { select: { contactEmail: true } } },
@@ -163,25 +190,8 @@ export async function POST(request: NextRequest) {
           const abGroup = randomUUID()
           for (const variant of ['A', 'B'] as const) {
             const variantTone = (variant === 'A' ? campaign.abToneA : campaign.abToneB) as EmailTone
-            const generated = await generateEmail({
-              cvText: profile.cvText,
-              jobTitle,
-              companyName: company.name,
-              companyIndustry: company.industry,
-              companyDescription: company.description,
-              companySize: company.size,
-              contactName: company.contactName,
-              yearFounded: company.yearFounded,
-              country: company.country,
-              techStack: company.techStack,
-              skills: profile.skills ?? [],
-              tone: variantTone,
-              hint,
-              userId: session.user.id,
-            })
-            let body = generated.body
-            if (signatureBlock) body = `${body}\n${signatureBlock}`
-
+            const generated = await runGenerateEmail(company, profile.cvText, profile.skills, jobTitle, variantTone, hint, userId)
+            const body = withSignature(generated.body, signatureBlock)
             await prisma.generatedEmail.create({
               data: {
                 companyId: company.id,
@@ -197,25 +207,8 @@ export async function POST(request: NextRequest) {
           results.push({ companyId: company.id, companyName: company.name })
         } else {
           // Single AI generation
-          const generated = await generateEmail({
-            cvText: profile.cvText,
-            jobTitle,
-            companyName: company.name,
-            companyIndustry: company.industry,
-            companyDescription: company.description,
-            companySize: company.size,
-            contactName: company.contactName,
-            yearFounded: company.yearFounded,
-            country: company.country,
-            techStack: company.techStack,
-            skills: profile.skills ?? [],
-            tone,
-            hint,
-            userId: session.user.id,
-          })
-          let body = generated.body
-          if (signatureBlock) body = `${body}\n${signatureBlock}`
-
+          const generated = await runGenerateEmail(company, profile.cvText, profile.skills, jobTitle, tone, hint, userId)
+          const body = withSignature(generated.body, signatureBlock)
           const email = await prisma.generatedEmail.create({
             data: { companyId: company.id, campaignId, subject: generated.subject, body, status: 'DRAFT' },
           })
@@ -240,8 +233,8 @@ export async function POST(request: NextRequest) {
 
     // Charge usage only for successful generations
     if (generatedCount > 0) {
-      await incrementUsage(session.user.id, 'ai_generation', generatedCount)
-      track(session.user.id, 'emails_generated', { count: generatedCount, failed: results.filter((r) => r.error).length })
+      await incrementUsage(userId, 'ai_generation', generatedCount)
+      track(userId, 'emails_generated', { count: generatedCount, failed: results.filter((r) => r.error).length })
     }
 
     return NextResponse.json({
@@ -255,4 +248,4 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : 'Failed to generate emails'
     return NextResponse.json({ error: message }, { status: 500 })
   }
-}
+})

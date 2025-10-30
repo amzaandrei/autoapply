@@ -1,14 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/auth'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { parseCVFromBase64, parseCVFromText } from '@/lib/ai'
+import { withAuth } from '@/lib/api-auth'
 
-export async function POST(request: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+export const POST = withAuth(async (request, { userId }) => {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
@@ -23,7 +18,7 @@ export async function POST(request: NextRequest) {
       if (fileType === 'application/pdf') {
         // Use Claude's document API for PDFs
         const base64 = Buffer.from(arrayBuffer).toString('base64')
-        const parsed = await parseCVFromBase64(base64, session.user.id)
+        const parsed = await parseCVFromBase64(base64, userId)
         cvText = [
           parsed.fullName,
           parsed.email,
@@ -46,9 +41,9 @@ export async function POST(request: NextRequest) {
 
         // Store parsed data in profile
         await prisma.userProfile.upsert({
-          where: { userId: session.user.id },
+          where: { userId: userId },
           create: {
-            userId: session.user.id,
+            userId: userId,
             cvText,
             skills: parsed.skills,
             bio: parsed.summary ?? undefined,
@@ -70,12 +65,12 @@ export async function POST(request: NextRequest) {
         const result = await mammoth.extractRawText({ buffer: Buffer.from(arrayBuffer) })
         cvText = result.value
 
-        const parsed = await parseCVFromText(cvText, session.user.id)
+        const parsed = await parseCVFromText(cvText, userId)
 
         await prisma.userProfile.upsert({
-          where: { userId: session.user.id },
+          where: { userId: userId },
           create: {
-            userId: session.user.id,
+            userId: userId,
             cvText,
             skills: parsed.skills,
             bio: parsed.summary ?? undefined,
@@ -94,8 +89,8 @@ export async function POST(request: NextRequest) {
     } else if (textInput) {
       cvText = textInput
       await prisma.userProfile.upsert({
-        where: { userId: session.user.id },
-        create: { userId: session.user.id, cvText },
+        where: { userId: userId },
+        create: { userId: userId, cvText },
         update: { cvText },
       })
       return NextResponse.json({ cvText })
@@ -107,4 +102,4 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : 'Failed to parse CV'
     return NextResponse.json({ error: message }, { status: 500 })
   }
-}
+})

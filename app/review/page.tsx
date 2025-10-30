@@ -37,6 +37,9 @@ import {
 import { StepIndicator } from '@/components/StepIndicator'
 import { PageTransition, StaggerItem } from '@/components/Motion'
 import { EmailVerificationBadge } from '@/components/EmailVerificationBadge'
+import { plainTextToHtml } from '@/lib/email-html'
+
+const PREVIEW_PARAGRAPH_STYLE = 'margin:0 0 14px 0;line-height:1.6;font-family:Arial,sans-serif;font-size:14px;color:#333;'
 
 type EmailTone = 'concise' | 'balanced' | 'detailed'
 
@@ -60,19 +63,7 @@ function ReviewPage() {
   const [regenTone, setRegenTone] = useState<EmailTone>('balanced')
   const [regenHint, setRegenHint] = useState('')
 
-  function toHtml(text: string): string {
-    // HTML-escape before wrapping — prevents XSS in email preview.
-    const escaped = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;')
-    return escaped
-      .split(/\n\n+/)
-      .map(para => `<p style="margin:0 0 14px 0;line-height:1.6;font-family:Arial,sans-serif;font-size:14px;color:#333;">${para.replace(/\n/g, '<br>')}</p>`)
-      .join('')
-  }
+  const toHtml = (text: string) => plainTextToHtml(text, PREVIEW_PARAGRAPH_STYLE)
 
   const emails = trpc.emails.list.useQuery({ campaignId }, { enabled: !!campaignId })
   const campaign = trpc.campaigns.getById.useQuery({ id: campaignId }, { enabled: !!campaignId })

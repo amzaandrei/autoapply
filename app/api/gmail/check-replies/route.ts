@@ -1,55 +1,24 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
-import { refreshAccessToken, getOAuth2Client } from '@/lib/gmail'
+import { getOAuth2Client } from '@/lib/gmail'
+import { resolveGmailAccessToken } from '@/lib/gmail-token'
+import { withAuthNoReq } from '@/lib/api-auth'
 import { sendTelegramNotification, formatReplyNotification } from '@/lib/notifications'
 import { invalidateAppliedCache } from '@/server/routers/regions'
 import { google } from 'googleapis'
 
-export async function POST() {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+export const POST = withAuthNoReq(async ({ userId }) => {
   try {
-    const gmailToken = await prisma.gmailToken.findUnique({
-      where: { userId: session.user.id },
-    })
-    if (!gmailToken) {
-      return NextResponse.json({ error: 'Gmail not connected' }, { status: 400 })
-    }
-
-    let accessToken = gmailToken.accessToken
-    const expiresAt = gmailToken.expiresAt ? new Date(gmailToken.expiresAt).getTime() : 0
-    const isExpired = expiresAt > 0 && Date.now() > expiresAt - 60_000
-    if (isExpired) {
-      if (!gmailToken.refreshToken) {
-        return NextResponse.json({ error: 'Gmail token expired. Please reconnect Gmail.' }, { status: 401 })
-      }
-      try {
-        const refreshed = await refreshAccessToken(gmailToken.refreshToken)
-        accessToken = refreshed.accessToken
-        await prisma.gmailToken.update({
-          where: { userId: session.user.id },
-          data: {
-            accessToken: refreshed.accessToken,
-            refreshToken: refreshed.refreshToken ?? gmailToken.refreshToken,
-            expiresAt: refreshed.expiresAt,
-          },
-        })
-      } catch (refreshErr) {
-        console.error('Token refresh failed:', refreshErr)
-        return NextResponse.json({ error: 'Failed to refresh Gmail token. Please reconnect Gmail.' }, { status: 401 })
-      }
-    }
+    const tokenResult = await resolveGmailAccessToken(userId)
+    if (!tokenResult.ok) return tokenResult.response
+    const { accessToken } = tokenResult
 
     const oauth2Client = getOAuth2Client()
     oauth2Client.setCredentials({ access_token: accessToken })
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: userId },
       select: { email: true },
     })
     const userEmail = user?.email?.toLowerCase() ?? ''
@@ -57,7 +26,7 @@ export async function POST() {
     // Get all SENT/OPENED emails that haven't been replied to
     const emails = await prisma.generatedEmail.findMany({
       where: {
-        campaign: { userId: session.user.id },
+        campaign: { userId: userId },
         status: { in: ['SENT', 'OPENED'] },
         repliedAt: null,
       },
@@ -182,7 +151,7 @@ export async function POST() {
       }
     }
 
-    if (repliesFound > 0 || bouncesFound > 0) invalidateAppliedCache(session.user.id)
+    if (repliesFound > 0 || bouncesFound > 0) invalidateAppliedCache(userId)
 
     return NextResponse.json({ checked: emails.length, repliesFound, bouncesFound, results })
   } catch (err) {
@@ -190,4 +159,4 @@ export async function POST() {
     const message = err instanceof Error ? err.message : 'Failed to check replies'
     return NextResponse.json({ error: message }, { status: 500 })
   }
-}
+})

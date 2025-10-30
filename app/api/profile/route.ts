@@ -2,6 +2,33 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 
+const userWithProfileSelect = {
+  id: true,
+  name: true,
+  email: true,
+  image: true,
+  createdAt: true,
+  profile: {
+    select: {
+      id: true,
+      cvUrl: true,
+      cvText: true,
+      cvPdfBase64: true,
+      jobTitle: true,
+      skills: true,
+      bio: true,
+      linkedIn: true,
+      portfolio: true,
+      emailTemplate: true,
+      useEmailTemplate: true,
+      signatureName: true,
+      signaturePhone: true,
+      signatureAddress: true,
+      updatedAt: true,
+    },
+  },
+} as const
+
 export async function GET() {
   const session = await auth()
   if (!session?.user?.id) {
@@ -10,32 +37,7 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      image: true,
-      createdAt: true,
-      profile: {
-        select: {
-          id: true,
-          cvUrl: true,
-          cvText: true,
-          cvPdfBase64: true,
-          jobTitle: true,
-          skills: true,
-          bio: true,
-          linkedIn: true,
-          portfolio: true,
-          emailTemplate: true,
-          useEmailTemplate: true,
-          signatureName: true,
-          signaturePhone: true,
-          signatureAddress: true,
-          updatedAt: true,
-        },
-      },
-    },
+    select: userWithProfileSelect,
   })
 
   if (!user) {
@@ -58,12 +60,10 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Allowed user fields
   const userUpdates: { name?: string; image?: string } = {}
   if (typeof body.name === 'string') userUpdates.name = body.name.trim()
   if (typeof body.image === 'string') userUpdates.image = body.image.trim()
 
-  // Allowed profile fields
   const profileUpdates: {
     jobTitle?: string
     skills?: string[]
@@ -110,32 +110,7 @@ export async function PATCH(request: NextRequest) {
 
   const updated = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      image: true,
-      createdAt: true,
-      profile: {
-        select: {
-          id: true,
-          cvUrl: true,
-          cvText: true,
-          cvPdfBase64: true,
-          jobTitle: true,
-          skills: true,
-          bio: true,
-          linkedIn: true,
-          portfolio: true,
-          emailTemplate: true,
-          useEmailTemplate: true,
-          signatureName: true,
-          signaturePhone: true,
-          signatureAddress: true,
-          updatedAt: true,
-        },
-      },
-    },
+    select: userWithProfileSelect,
   })
 
   return NextResponse.json(updated)

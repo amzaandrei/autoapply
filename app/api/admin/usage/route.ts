@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireAdmin } from '@/lib/admin'
+import { withAdmin } from '@/lib/admin'
 import type { Tier } from '@/lib/tier-limits'
 
 export const runtime = 'nodejs'
@@ -48,14 +48,7 @@ export interface AdminUsageResponse {
   }
 }
 
-export async function GET() {
-  try {
-    await requireAdmin()
-  } catch (err) {
-    const status = err instanceof Error && err.message === 'Forbidden' ? 403 : 401
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unauthorized' }, { status })
-  }
-
+export const GET = withAdmin(async () => {
   const month = currentMonth()
   const hour = currentHour()
 
@@ -155,4 +148,4 @@ export async function GET() {
 
   const payload: AdminUsageResponse = { period: month, rows, totals }
   return NextResponse.json(payload)
-}
+})

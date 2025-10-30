@@ -1,47 +1,36 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/input'
 import { AuthCard } from '@/components/auth/AuthCard'
 import { OAuthButtons } from '@/components/auth/OAuthButtons'
 import { CredentialsForm } from '@/components/auth/CredentialsForm'
+import { useCredentialsForm } from '@/components/auth/use-credentials-form'
 
 export default function SignupPage() {
-  const router = useRouter()
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const form = useCredentialsForm()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
-    setError('')
+    form.setLoading(true)
+    form.setError('')
 
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name, email: form.email, password: form.password }),
     })
 
     if (!res.ok) {
       const data = await res.json()
-      setError(data.error ?? 'Registration failed')
-      setLoading(false)
+      form.setError(data.error ?? 'Registration failed')
+      form.setLoading(false)
       return
     }
 
-    const signInResult = await signIn('credentials', { email, password, redirect: false })
-    if (signInResult?.error) {
-      setError('Account created but sign-in failed. Please sign in manually.')
-      setLoading(false)
-      return
-    }
-    router.push('/dashboard')
+    await form.signInAndRedirect('Account created but sign-in failed. Please sign in manually.')
   }
 
   return (
@@ -58,13 +47,13 @@ export default function SignupPage() {
       }
     >
       <CredentialsForm
-        email={email}
-        setEmail={setEmail}
-        password={password}
-        setPassword={setPassword}
+        email={form.email}
+        setEmail={form.setEmail}
+        password={form.password}
+        setPassword={form.setPassword}
         passwordPlaceholder="Password (min 8 chars)"
-        error={error}
-        loading={loading}
+        error={form.error}
+        loading={form.loading}
         submitLabel="Create account"
         loadingLabel="Creating account..."
         onSubmit={handleSubmit}
