@@ -34,6 +34,44 @@ export type ContactVerdict =
   | { kind: 'invalid_email'; email: string; reason: string }
   | { kind: 'no_email' }
 
+async function runHunterDnsVerification(
+  email: string,
+  userId?: string | null,
+): Promise<{ status: HunterVerifyStatus; score: number; source: 'hunter' | 'dns' }> {
+  let status: HunterVerifyStatus = 'unknown'
+  let score = 0
+  let source: 'hunter' | 'dns' = 'dns'
+
+  if (hasHunter()) {
+    try {
+      await ensureCostBudget('hunter', HUNTER_VERIFY_COST_CENTS)
+      const result = await hunterVerifyEmail(email, userId)
+      if (result) {
+        await recordCost('hunter', HUNTER_VERIFY_COST_CENTS)
+        status = result.status
+        score = result.score
+        source = 'hunter'
+      }
+    } catch (err) {
+      if (!(err instanceof CostCapExceeded)) throw err
+      // Budget exceeded — fall through to DNS.
+    }
+  }
+
+  if (source === 'dns' || status === 'error') {
+    const dns = await validateEmail(email)
+    if (dns.valid) {
+      status = 'unknown'
+      score = 40
+    } else {
+      status = 'invalid'
+      score = 0
+    }
+  }
+
+  return { status, score, source }
+}
+
 /**
  * Decide whether a company's contact email is safe to send to. If the stored
  * verification is recent, reuse it; otherwise hit Hunter (or DNS fallback).
@@ -52,39 +90,7 @@ export async function resolveContactEmail(
     return classify(email, company.contactEmailStatus as HunterVerifyStatus, company.contactEmailScore ?? 0, 'cache')
   }
 
-  // Fresh verification
-  let status: HunterVerifyStatus = 'unknown'
-  let score = 0
-  let source: 'hunter' | 'dns' = 'dns'
-
-  if (hasHunter()) {
-    try {
-      await ensureCostBudget('hunter', HUNTER_VERIFY_COST_CENTS)
-      const result = await hunterVerifyEmail(email, userId)
-      if (result) {
-        await recordCost('hunter', HUNTER_VERIFY_COST_CENTS)
-        status = result.status
-        score = result.score
-        source = 'hunter'
-      }
-    } catch (err) {
-      if (!(err instanceof CostCapExceeded)) throw err
-      // Budget exceeded — fall through to DNS so the user isn't stuck.
-    }
-  }
-
-  // If Hunter is unavailable or returned an error, fall back to a cheap MX check.
-  // MX-only can't confirm a mailbox exists but it rules out obviously dead domains.
-  if (source === 'dns' || status === 'error') {
-    const dns = await validateEmail(email)
-    if (dns.valid) {
-      status = 'unknown'
-      score = 40 // soft confidence — MX works but no SMTP proof
-    } else {
-      status = 'invalid'
-      score = 0
-    }
-  }
+  const { status, score, source } = await runHunterDnsVerification(email, userId)
 
   // Persist on the Company row so the next call is cheap
   await prisma.company.update({
@@ -144,37 +150,7 @@ async function verifyTransientEmail(email: string, userId?: string | null): Prom
   const normalized = email.trim().toLowerCase()
   if (!normalized) return { kind: 'no_email' }
 
-  let status: HunterVerifyStatus = 'unknown'
-  let score = 0
-  let source: 'hunter' | 'dns' = 'dns'
-
-  if (hasHunter()) {
-    try {
-      await ensureCostBudget('hunter', HUNTER_VERIFY_COST_CENTS)
-      const result = await hunterVerifyEmail(normalized, userId)
-      if (result) {
-        await recordCost('hunter', HUNTER_VERIFY_COST_CENTS)
-        status = result.status
-        score = result.score
-        source = 'hunter'
-      }
-    } catch (err) {
-      if (!(err instanceof CostCapExceeded)) throw err
-      // Budget exceeded — fall through to DNS.
-    }
-  }
-
-  if (source === 'dns' || status === 'error') {
-    const dns = await validateEmail(normalized)
-    if (dns.valid) {
-      status = 'unknown'
-      score = 40
-    } else {
-      status = 'invalid'
-      score = 0
-    }
-  }
-
+  const { status, score, source } = await runHunterDnsVerification(normalized, userId)
   return classify(normalized, status, score, source)
 }
 

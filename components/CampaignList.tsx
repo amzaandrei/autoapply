@@ -11,19 +11,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { MoreHorizontal, ArrowRight, Send, Inbox, Kanban, BarChart3, Download, Trash2, Layers, PenSquare, CalendarDays, X } from 'lucide-react'
 import { StaggerItem } from '@/components/Motion'
 import { SaveTemplateDialog } from '@/components/SaveTemplateDialog'
+import { ConfirmDeleteDialog } from '@/components/ConfirmDeleteDialog'
 import { trpc } from '@/lib/trpc'
 import { toast } from 'sonner'
 
@@ -385,25 +376,13 @@ export default function CampaignList({
         </div>
       )}
 
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete campaign?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete all emails and company data for this campaign.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null) }}
+        title="Delete campaign?"
+        description="This will permanently delete all emails and company data for this campaign."
+        onConfirm={handleDelete}
+      />
 
       <SaveTemplateDialog
         open={!!saveTemplateCampaignId}

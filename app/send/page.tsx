@@ -132,9 +132,15 @@ function SendPage() {
         skipped?: number
         results?: SendResult[]
         error?: string
+        needsReconnect?: boolean
       }
 
       if (!res.ok) {
+        if (data.needsReconnect) {
+          // Token row was deleted server-side — re-poll status so the
+          // "Connect Gmail" card surfaces with a fresh OAuth link.
+          gmailStatus.refetch()
+        }
         setSendError(data.error ?? 'Send failed')
         toast.error(data.error ?? 'Send failed')
         return

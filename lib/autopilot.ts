@@ -14,7 +14,7 @@ import { searchAllJobAPIs } from './job-apis'
 import { resolveContactEmail, type ContactVerdict, findAndVerifyForDiscovery } from './contact-resolver'
 import { estimateSalary } from './salary-estimator'
 import { geocodeForwardBatch } from './geocode-cache'
-import { sendGmailEmail, refreshAccessToken } from './gmail'
+import { sendGmailEmail, refreshAccessToken, GmailReauthRequiredError } from './gmail'
 import { getTier, checkQuota, incrementUsage, hasTierAtLeast } from './entitlements'
 import { hunterEnrichCompany } from './hunter'
 import { logger } from './logger'
@@ -89,16 +89,27 @@ async function getValidGmailAccessToken(userId: string): Promise<string | null> 
   if (!isExpired) return token.accessToken
   if (!token.refreshToken) return null
 
-  const refreshed = await refreshAccessToken(token.refreshToken)
-  await prisma.gmailToken.update({
-    where: { userId },
-    data: {
-      accessToken: refreshed.accessToken,
-      refreshToken: refreshed.refreshToken ?? token.refreshToken,
-      expiresAt: refreshed.expiresAt,
-    },
-  })
-  return refreshed.accessToken
+  try {
+    const refreshed = await refreshAccessToken(token.refreshToken)
+    await prisma.gmailToken.update({
+      where: { userId },
+      data: {
+        accessToken: refreshed.accessToken,
+        refreshToken: refreshed.refreshToken ?? token.refreshToken,
+        expiresAt: refreshed.expiresAt,
+      },
+    })
+    return refreshed.accessToken
+  } catch (err) {
+    // Refresh token revoked — drop the row so the user is prompted to
+    // reconnect on next visit; autopilot run skips Gmail send for this cycle.
+    if (err instanceof GmailReauthRequiredError) {
+      await prisma.gmailToken.deleteMany({ where: { userId } })
+      logger.warn({ userId }, 'autopilot: gmail refresh token revoked, cleared row')
+      return null
+    }
+    throw err
+  }
 }
 
 async function finishRun(

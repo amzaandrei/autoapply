@@ -1,15 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/auth'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { withAuthParams } from '@/lib/api-auth'
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth()
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const { id } = await params
-  const campaign = await prisma.campaign.findFirst({
-    where: { id, userId: session.user.id },
-  })
+export const GET = withAuthParams<{ id: string }, NextResponse>(async (_req, { userId, params }) => {
+  const { id } = params
+  const campaign = await prisma.campaign.findFirst({ where: { id, userId } })
   if (!campaign) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const emails = await prisma.generatedEmail.findMany({
@@ -83,4 +78,4 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     ),
     repliedEmails,
   })
-}
+})

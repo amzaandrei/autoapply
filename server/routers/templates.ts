@@ -7,6 +7,13 @@ import { enqueueAutopilotForTemplate } from '@/lib/queue'
 import { computeNextRunAt, runAutopilotForTemplate } from '@/lib/autopilot'
 import { hasRedis } from '@/lib/redis'
 import { logger } from '@/lib/logger'
+import { findOwnedCampaign } from '../utils'
+
+async function findOwnedTemplate(id: string, userId: string) {
+  const existing = await prisma.campaignTemplate.findFirst({ where: { id, userId } })
+  if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
+  return existing
+}
 
 const templateInput = z.object({
   name: z.string().min(1).max(80),
@@ -36,13 +43,7 @@ export const templatesRouter = router({
 
   getById: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const tpl = await prisma.campaignTemplate.findFirst({
-        where: { id: input.id, userId: ctx.session.user.id },
-      })
-      if (!tpl) throw new TRPCError({ code: 'NOT_FOUND' })
-      return tpl
-    }),
+    .query(({ ctx, input }) => findOwnedTemplate(input.id, ctx.session.user.id)),
 
   create: protectedProcedure
     .input(templateInput)
@@ -62,10 +63,7 @@ export const templatesRouter = router({
     .input(z.object({ id: z.string() }).merge(templateInput.partial()))
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input
-      const existing = await prisma.campaignTemplate.findFirst({
-        where: { id, userId: ctx.session.user.id },
-      })
-      if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
+      await findOwnedTemplate(id, ctx.session.user.id)
       return prisma.campaignTemplate.update({
         where: { id },
         data: {
@@ -80,10 +78,7 @@ export const templatesRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const existing = await prisma.campaignTemplate.findFirst({
-        where: { id: input.id, userId: ctx.session.user.id },
-      })
-      if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
+      await findOwnedTemplate(input.id, ctx.session.user.id)
       await prisma.campaignTemplate.delete({ where: { id: input.id } })
       return { ok: true }
     }),
@@ -100,10 +95,7 @@ export const templatesRouter = router({
       dataSource: z.enum(['ai', 'jobs', 'both']).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const campaign = await prisma.campaign.findFirst({
-        where: { id: input.campaignId, userId: ctx.session.user.id },
-      })
-      if (!campaign) throw new TRPCError({ code: 'NOT_FOUND' })
+      const campaign = await findOwnedCampaign(input.campaignId, ctx.session.user.id)
 
       // Campaign.name is a comma-separated list of roles
       const roles = campaign.name.split(',').map((s) => s.trim()).filter(Boolean)
@@ -143,10 +135,7 @@ export const templatesRouter = router({
       consentAccepted: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const existing = await prisma.campaignTemplate.findFirst({
-        where: { id: input.id, userId: ctx.session.user.id },
-      })
-      if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
+      const existing = await findOwnedTemplate(input.id, ctx.session.user.id)
 
       if (input.enabled) {
         const tier = await getTier(ctx.session.user.id)
@@ -191,10 +180,7 @@ export const templatesRouter = router({
   runNow: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const existing = await prisma.campaignTemplate.findFirst({
-        where: { id: input.id, userId: ctx.session.user.id },
-      })
-      if (!existing) throw new TRPCError({ code: 'NOT_FOUND' })
+      const existing = await findOwnedTemplate(input.id, ctx.session.user.id)
       if (!existing.autopilotEnabled || !existing.autopilotAcceptedAt) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -230,11 +216,7 @@ export const templatesRouter = router({
   listRuns: protectedProcedure
     .input(z.object({ id: z.string(), limit: z.number().int().min(1).max(50).default(10) }))
     .query(async ({ ctx, input }) => {
-      const tpl = await prisma.campaignTemplate.findFirst({
-        where: { id: input.id, userId: ctx.session.user.id },
-        select: { id: true },
-      })
-      if (!tpl) throw new TRPCError({ code: 'NOT_FOUND' })
+      await findOwnedTemplate(input.id, ctx.session.user.id)
       return prisma.autopilotRun.findMany({
         where: { templateId: input.id },
         orderBy: { startedAt: 'desc' },

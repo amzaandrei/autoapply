@@ -5,16 +5,7 @@ import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDeleteDialog } from '@/components/ConfirmDeleteDialog'
 import { toast } from 'sonner'
 import { useState } from 'react'
 import Link from 'next/link'
@@ -128,26 +119,15 @@ export function TemplatesSection() {
         </div>
       </CardContent>
 
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete template?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove the template. Any campaigns created from it will stay.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => { if (deleteId) deleteTemplate.mutate({ id: deleteId }) }}
-              disabled={deleteTemplate.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteTemplate.isPending ? 'Deleting…' : 'Delete'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDeleteDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null) }}
+        title="Delete template?"
+        description="This will remove the template. Any campaigns created from it will stay."
+        confirmLabel={deleteTemplate.isPending ? 'Deleting…' : 'Delete'}
+        confirmDisabled={deleteTemplate.isPending}
+        onConfirm={() => { if (deleteId) deleteTemplate.mutate({ id: deleteId }) }}
+      />
     </Card>
   )
 }
