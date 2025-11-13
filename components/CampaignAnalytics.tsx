@@ -37,6 +37,47 @@ interface AnalyticsData {
   repliedEmails: RepliedEmail[]
 }
 
+function StatsBreakdownTable({
+  title,
+  columnLabel,
+  data,
+}: {
+  title: string
+  columnLabel: string
+  data: Record<string, Stats>
+}) {
+  if (Object.keys(data).length <= 1) return null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-muted-foreground text-left">
+              <th className="pb-2 font-medium">{columnLabel}</th>
+              <th className="pb-2 font-medium text-center">Sent</th>
+              <th className="pb-2 font-medium text-center">Open %</th>
+              <th className="pb-2 font-medium text-center">Reply %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(data).map(([key, stats]) => (
+              <tr key={key} className="border-b border-border/40 last:border-0">
+                <td className="py-2">{key}</td>
+                <td className="py-2 text-center">{stats.sent}</td>
+                <td className="py-2 text-center">{stats.openRate}%</td>
+                <td className="py-2 text-center">{stats.replyRate}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function CampaignAnalytics({ campaignId }: { campaignId: string }) {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -261,67 +302,8 @@ export function CampaignAnalytics({ campaignId }: { campaignId: string }) {
         </Card>
       )}
 
-      {/* By Industry */}
-      {Object.keys(data.byIndustry).length > 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">By Industry</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground text-left">
-                  <th className="pb-2 font-medium">Industry</th>
-                  <th className="pb-2 font-medium text-center">Sent</th>
-                  <th className="pb-2 font-medium text-center">Open %</th>
-                  <th className="pb-2 font-medium text-center">Reply %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(data.byIndustry).map(([industry, stats]) => (
-                  <tr key={industry} className="border-b border-border/40 last:border-0">
-                    <td className="py-2">{industry}</td>
-                    <td className="py-2 text-center">{stats.sent}</td>
-                    <td className="py-2 text-center">{stats.openRate}%</td>
-                    <td className="py-2 text-center">{stats.replyRate}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* By Company Size */}
-      {Object.keys(data.bySize).length > 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">By Company Size</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground text-left">
-                  <th className="pb-2 font-medium">Size</th>
-                  <th className="pb-2 font-medium text-center">Sent</th>
-                  <th className="pb-2 font-medium text-center">Open %</th>
-                  <th className="pb-2 font-medium text-center">Reply %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(data.bySize).map(([size, stats]) => (
-                  <tr key={size} className="border-b border-border/40 last:border-0">
-                    <td className="py-2">{size}</td>
-                    <td className="py-2 text-center">{stats.sent}</td>
-                    <td className="py-2 text-center">{stats.openRate}%</td>
-                    <td className="py-2 text-center">{stats.replyRate}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      )}
+      <StatsBreakdownTable title="By Industry" columnLabel="Industry" data={data.byIndustry} />
+      <StatsBreakdownTable title="By Company Size" columnLabel="Size" data={data.bySize} />
     </div>
   )
 }

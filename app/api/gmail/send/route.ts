@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/auth'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { sendGmailEmail } from '@/lib/gmail'
+import { sendGmailEmail, refreshAccessToken, GmailReauthRequiredError } from '@/lib/gmail'
 import { invalidateAppliedCache } from '@/server/routers/regions'
 import { getTier, limitsFor, incrementUsage } from '@/lib/entitlements'
 import { track } from '@/lib/analytics'
+import { withAuth } from '@/lib/api-auth'
 
 interface SendResult {
   emailId: string
@@ -15,12 +15,7 @@ interface SendResult {
   gmailMessageId?: string
 }
 
-export async function POST(request: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+export const POST = withAuth(async (request, { userId }) => {
   try {
     const body = await request.json() as { campaignId: string }
     const { campaignId } = body
@@ -31,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     // Verify campaign
     const campaign = await prisma.campaign.findFirst({
-      where: { id: campaignId, userId: session.user.id },
+      where: { id: campaignId, userId: userId },
     })
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
@@ -39,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     // Get Gmail token
     const gmailToken = await prisma.gmailToken.findUnique({
-      where: { userId: session.user.id },
+      where: { userId: userId },
     })
     if (!gmailToken) {
       return NextResponse.json(
@@ -52,32 +47,48 @@ export async function POST(request: NextRequest) {
     let accessToken: string
     const isExpired = gmailToken.expiresAt && new Date() > new Date(gmailToken.expiresAt.getTime() - 60_000)
     if (isExpired) {
-      if (!gmailToken.refreshToken) throw new Error('Gmail token expired and no refresh token available')
-      const { refreshAccessToken } = await import('@/lib/gmail')
-      const refreshed = await refreshAccessToken(gmailToken.refreshToken)
-      accessToken = refreshed.accessToken
-      // Persist all refreshed token fields
-      await prisma.gmailToken.update({
-        where: { userId: session.user.id },
-        data: {
-          accessToken: refreshed.accessToken,
-          refreshToken: refreshed.refreshToken ?? gmailToken.refreshToken,
-          expiresAt: refreshed.expiresAt,
-        },
-      })
+      if (!gmailToken.refreshToken) {
+        await prisma.gmailToken.deleteMany({ where: { userId } })
+        return NextResponse.json(
+          { error: 'Gmail access expired. Reconnect your Gmail account to continue.', needsReconnect: true },
+          { status: 401 }
+        )
+      }
+      try {
+        const refreshed = await refreshAccessToken(gmailToken.refreshToken)
+        accessToken = refreshed.accessToken
+        // Persist all refreshed token fields
+        await prisma.gmailToken.update({
+          where: { userId: userId },
+          data: {
+            accessToken: refreshed.accessToken,
+            refreshToken: refreshed.refreshToken ?? gmailToken.refreshToken,
+            expiresAt: refreshed.expiresAt,
+          },
+        })
+      } catch (err) {
+        if (err instanceof GmailReauthRequiredError) {
+          await prisma.gmailToken.deleteMany({ where: { userId } })
+          return NextResponse.json(
+            { error: 'Gmail access has been revoked. Reconnect your Gmail account to continue.', needsReconnect: true },
+            { status: 401 }
+          )
+        }
+        throw err
+      }
     } else {
       accessToken = gmailToken.accessToken
     }
 
     // Get user info for From header and CV attachment
     const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+      where: { id: userId },
       select: { name: true, email: true },
     })
     const fromHeader = user?.name ? `${user.name} <${user.email}>` : user?.email ?? ''
 
     const profile = await prisma.userProfile.findUnique({
-      where: { userId: session.user.id },
+      where: { userId: userId },
       select: { cvPdfBase64: true, jobTitle: true },
     })
 
@@ -104,7 +115,7 @@ export async function POST(request: NextRequest) {
     // Get all contact emails we've already sent to (across ALL campaigns)
     const alreadySentEmails = await prisma.generatedEmail.findMany({
       where: {
-        campaign: { userId: session.user.id },
+        campaign: { userId: userId },
         status: { in: ['SENT', 'OPENED', 'REPLIED'] },
       },
       select: { company: { select: { contactEmail: true } } },
@@ -119,12 +130,12 @@ export async function POST(request: NextRequest) {
     let isFirst = true
 
     // Plan-tier email cap (monthly). Compute up-front; counter increments after each successful send.
-    const tier = await getTier(session.user.id)
+    const tier = await getTier(userId)
     const monthlyLimit = limitsFor(tier).emailsPerMonth
     const now = new Date()
     const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
     const sentRow = await prisma.usageCounter.findUnique({
-      where: { userId_action_period: { userId: session.user.id, action: 'email_sent', period } },
+      where: { userId_action_period: { userId: userId, action: 'email_sent', period } },
       select: { count: true },
     })
     let emailsSentThisMonth = sentRow?.count ?? 0
@@ -213,8 +224,8 @@ export async function POST(request: NextRequest) {
         })
 
         emailsSentThisMonth += 1
-        await incrementUsage(session.user.id, 'email_sent', 1)
-        track(session.user.id, 'email_sent', { campaignId, tier })
+        await incrementUsage(userId, 'email_sent', 1)
+        track(userId, 'email_sent', { campaignId, tier })
 
         results.push({
           emailId: email.id,
@@ -238,7 +249,7 @@ export async function POST(request: NextRequest) {
     const sentCount = results.filter((r) => r.status === 'sent').length
 
     // Invalidate heat map cache since new emails were sent
-    if (sentCount > 0) invalidateAppliedCache(session.user.id)
+    if (sentCount > 0) invalidateAppliedCache(userId)
 
     // Update campaign sent count
     await prisma.campaign.update({
@@ -260,4 +271,4 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : 'Failed to send emails'
     return NextResponse.json({ error: message }, { status: 500 })
   }
-}
+})

@@ -497,6 +497,20 @@ function StatTile({
   )
 }
 
+function HoverLiftCard({ className, children }: { className: string; children: React.ReactNode }) {
+  const reduced = useMotionSafe()
+  return (
+    <motion.div
+      variants={fadeUp}
+      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={reduced ? undefined : { y: -4, transition: { duration: 0.25 } }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
 function FeatureCard({
   icon,
   title,
@@ -508,12 +522,7 @@ function FeatureCard({
 }) {
   const reduced = useMotionSafe()
   return (
-    <motion.div
-      variants={fadeUp}
-      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      whileHover={reduced ? undefined : { y: -4, transition: { duration: 0.25 } }}
-      className="group rounded-xl border border-border/60 bg-card p-6 hover:border-border transition-colors"
-    >
+    <HoverLiftCard className="group rounded-xl border border-border/60 bg-card p-6 hover:border-border transition-colors">
       <motion.div
         whileHover={reduced ? undefined : { scale: 1.05, rotate: -3 }}
         transition={{ type: 'spring', stiffness: 300, damping: 20 }}
@@ -523,23 +532,17 @@ function FeatureCard({
       </motion.div>
       <h3 className="font-semibold">{title}</h3>
       <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{body}</p>
-    </motion.div>
+    </HoverLiftCard>
   )
 }
 
 function StepCard({ num, title, body }: { num: string; title: string; body: string }) {
-  const reduced = useMotionSafe()
   return (
-    <motion.div
-      variants={fadeUp}
-      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      whileHover={reduced ? undefined : { y: -4, transition: { duration: 0.25 } }}
-      className="rounded-xl border border-border/60 bg-card p-6"
-    >
+    <HoverLiftCard className="rounded-xl border border-border/60 bg-card p-6">
       <div className="text-4xl font-mono font-light text-primary/40">{num}</div>
       <h3 className="mt-4 font-semibold">{title}</h3>
       <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{body}</p>
-    </motion.div>
+    </HoverLiftCard>
   )
 }
 

@@ -1,5 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/auth'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { discoverCompanies, type CompanyResult } from '@/lib/ai'
 import { searchAllJobAPIs } from '@/lib/job-apis'
@@ -12,13 +11,9 @@ import { addOpportunityLocations, invalidateAppliedCache } from '@/server/router
 import { checkQuota, incrementUsage, getTier } from '@/lib/entitlements'
 import { hasTierAtLeast } from '@/lib/tier-limits'
 import { track } from '@/lib/analytics'
+import { withAuth } from '@/lib/api-auth'
 
-export async function POST(request: NextRequest) {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+export const POST = withAuth(async (request, { userId }) => {
   try {
     const body = await request.json() as {
       campaignId: string
@@ -41,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Rate limit: max 30 discovery searches per hour
-    const limit = rateLimit(`discover:${session.user.id}`, 30, 60 * 60 * 1000)
+    const limit = rateLimit(`discover:${userId}`, 30, 60 * 60 * 1000)
     if (!limit.allowed) {
       return NextResponse.json({
         error: `Too many searches. Try again in ${Math.ceil(limit.resetIn / 60)} minutes.`,
@@ -49,7 +44,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Plan quota — hourly discovery rate
-    const quota = await checkQuota(session.user.id, 'discovery')
+    const quota = await checkQuota(userId, 'discovery')
     if (!quota.allowed) {
       return NextResponse.json({
         error: `Hourly discovery limit reached (${quota.limit}/hr on ${quota.tier}).`,
@@ -62,7 +57,7 @@ export async function POST(request: NextRequest) {
     // Every company discovered burns up to 2 Hunter credits (1 search + 1 verify),
     // so refuse the whole search if we're near the cap rather than burn credits
     // for a half-completed result.
-    const hunterQuota = await checkQuota(session.user.id, 'hunter_request')
+    const hunterQuota = await checkQuota(userId, 'hunter_request')
     if (!hunterQuota.allowed) {
       return NextResponse.json({
         error: `Monthly email-verification limit reached (${hunterQuota.limit}/month on ${hunterQuota.tier}). Upgrade to Pro for a higher cap.`,
@@ -72,11 +67,11 @@ export async function POST(request: NextRequest) {
       }, { status: 402 })
     }
 
-    await incrementUsage(session.user.id, 'discovery')
+    await incrementUsage(userId, 'discovery')
 
     // Verify campaign
     const campaign = await prisma.campaign.findFirst({
-      where: { id: campaignId, userId: session.user.id },
+      where: { id: campaignId, userId: userId },
     })
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
@@ -85,13 +80,13 @@ export async function POST(request: NextRequest) {
     let companies: CompanyResult[] = []
 
     if (source === 'ai') {
-      companies = await discoverCompanies({ jobTitle, industry, region, additionalContext, searchMode, userId: session.user.id })
+      companies = await discoverCompanies({ jobTitle, industry, region, additionalContext, searchMode, userId: userId })
     } else if (source === 'jobs') {
       companies = await searchAllJobAPIs(jobTitle, region, searchMode)
     } else {
       // 'both' — fetch in parallel, merge, dedup by company name
       const [aiResults, jobResults] = await Promise.all([
-        discoverCompanies({ jobTitle, industry, region, additionalContext, searchMode, userId: session.user.id }),
+        discoverCompanies({ jobTitle, industry, region, additionalContext, searchMode, userId: userId }),
         searchAllJobAPIs(jobTitle, region, searchMode),
       ])
       const seen = new Set<string>()
@@ -105,7 +100,7 @@ export async function POST(request: NextRequest) {
 
     // Filter out blacklisted companies entirely (previous bounces, manually blacklisted, etc.)
     const blacklist = await prisma.blacklistedCompany.findMany({
-      where: { userId: session.user.id },
+      where: { userId: userId },
       select: { name: true, domain: true },
     })
     const blacklistNames = new Set(blacklist.map((b) => b.name.toLowerCase()))
@@ -133,7 +128,7 @@ export async function POST(request: NextRequest) {
         domain: c.domain,
         existingEmail: c.contactEmail,
         contactName: c.contactName,
-        userId: session.user.id,
+        userId: userId,
       })
       // Worst case: 1 domain search (if email missing) + 1 verify
       hunterCreditsRemaining -= 2
@@ -152,16 +147,16 @@ export async function POST(request: NextRequest) {
     // Enriched firmographics (year founded, country, tech stack, logo)
     // dramatically sharpen the personalization in `generateEmail`.
     const enrichmentByDomain = new Map<string, HunterCompanyEnrichment>()
-    const tier = await getTier(session.user.id)
+    const tier = await getTier(userId)
     if (hasTierAtLeast(tier, 'STARTER') && companies.length > 0) {
-      const enrichQuota = await checkQuota(session.user.id, 'hunter_enrichment')
+      const enrichQuota = await checkQuota(userId, 'hunter_enrichment')
       let enrichRemaining = enrichQuota.allowed ? enrichQuota.remaining : 0
       for (const c of companies) {
         if (enrichRemaining <= 0) break
         const domain = c.domain
         if (!domain) continue
         if (enrichmentByDomain.has(domain)) continue
-        const enrichment = await hunterEnrichCompany({ domain, userId: session.user.id })
+        const enrichment = await hunterEnrichCompany({ domain, userId: userId })
         enrichRemaining -= 1
         if (enrichment) enrichmentByDomain.set(domain, enrichment)
       }
@@ -170,7 +165,7 @@ export async function POST(request: NextRequest) {
     // Tag companies that were already contacted across any campaign
     const previouslySent = await prisma.generatedEmail.findMany({
       where: {
-        campaign: { userId: session.user.id },
+        campaign: { userId: userId },
         status: { in: ['SENT', 'OPENED', 'REPLIED'] },
       },
       select: {
@@ -239,7 +234,7 @@ export async function POST(request: NextRequest) {
         }),
         skipDuplicates: true,
       })
-      invalidateAppliedCache(session.user.id)
+      invalidateAppliedCache(userId)
     }
 
     // Feed the opportunity cache with all discovered locations (not just saved ones)
@@ -248,9 +243,9 @@ export async function POST(request: NextRequest) {
       const geo = lookupGeo(c.location) ?? lookupGeo(region)
       if (geo) allLocations.push({ lat: geo.lat, lng: geo.lng, region: geo.shortName })
     }
-    if (allLocations.length > 0) addOpportunityLocations(session.user.id, allLocations)
+    if (allLocations.length > 0) addOpportunityLocations(userId, allLocations)
 
-    track(session.user.id, 'companies_discovered', {
+    track(userId, 'companies_discovered', {
       count: taggedCompanies.length,
       saved: saveResults ? toSave.length : 0,
       droppedUnverified,
@@ -266,4 +261,4 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : 'Discovery failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }
-}
+})

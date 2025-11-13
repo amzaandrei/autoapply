@@ -1,32 +1,19 @@
 'use client'
 
-import { useState } from 'react'
-import { signIn } from 'next-auth/react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { AuthCard } from '@/components/auth/AuthCard'
 import { OAuthButtons } from '@/components/auth/OAuthButtons'
 import { CredentialsForm } from '@/components/auth/CredentialsForm'
+import { useCredentialsForm } from '@/components/auth/use-credentials-form'
 
 export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const form = useCredentialsForm()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    const result = await signIn('credentials', { email, password, redirect: false })
-    if (result?.error) {
-      setError('Invalid email or password')
-      setLoading(false)
-    } else {
-      router.push('/dashboard')
-    }
+    form.setLoading(true)
+    form.setError('')
+    await form.signInAndRedirect('Invalid email or password')
   }
 
   return (
@@ -43,12 +30,12 @@ export default function LoginPage() {
       }
     >
       <CredentialsForm
-        email={email}
-        setEmail={setEmail}
-        password={password}
-        setPassword={setPassword}
-        error={error}
-        loading={loading}
+        email={form.email}
+        setEmail={form.setEmail}
+        password={form.password}
+        setPassword={form.setPassword}
+        error={form.error}
+        loading={form.loading}
         submitLabel="Sign in"
         loadingLabel="Signing in..."
         onSubmit={handleSubmit}

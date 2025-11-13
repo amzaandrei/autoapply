@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { router, protectedProcedure } from '../trpc'
 import { prisma } from '@/lib/prisma'
-import { TRPCError } from '@trpc/server'
+import { findOwnedCampaign, findOwnedCompany } from '../utils'
 
 const STAGES = ['APPLIED', 'PHONE_SCREEN', 'TECHNICAL', 'ONSITE', 'OFFER', 'REJECTED', 'ACCEPTED'] as const
 
@@ -9,10 +9,7 @@ export const interviewsRouter = router({
   listByCampaign: protectedProcedure
     .input(z.object({ campaignId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const campaign = await prisma.campaign.findFirst({
-        where: { id: input.campaignId, userId: ctx.session.user.id },
-      })
-      if (!campaign) throw new TRPCError({ code: 'NOT_FOUND' })
+      await findOwnedCampaign(input.campaignId, ctx.session.user.id)
 
       const companies = await prisma.company.findMany({
         where: { campaignId: input.campaignId, status: { in: ['EMAILED', 'REPLIED'] } },
@@ -41,13 +38,7 @@ export const interviewsRouter = router({
       notes: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const company = await prisma.company.findUnique({
-        where: { id: input.companyId },
-        include: { campaign: { select: { userId: true } } },
-      })
-      if (!company || company.campaign.userId !== ctx.session.user.id) {
-        throw new TRPCError({ code: 'NOT_FOUND' })
-      }
+      await findOwnedCompany(input.companyId, ctx.session.user.id)
       return prisma.interviewStage.create({
         data: {
           companyId: input.companyId,
@@ -61,13 +52,7 @@ export const interviewsRouter = router({
   history: protectedProcedure
     .input(z.object({ companyId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const company = await prisma.company.findUnique({
-        where: { id: input.companyId },
-        include: { campaign: { select: { userId: true } } },
-      })
-      if (!company || company.campaign.userId !== ctx.session.user.id) {
-        throw new TRPCError({ code: 'NOT_FOUND' })
-      }
+      await findOwnedCompany(input.companyId, ctx.session.user.id)
       return prisma.interviewStage.findMany({
         where: { companyId: input.companyId },
         orderBy: { createdAt: 'asc' },

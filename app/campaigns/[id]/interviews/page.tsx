@@ -1,13 +1,13 @@
 'use client'
 
 import { use } from 'react'
-import { useRouter } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { DashboardSubpageHeader } from '@/components/DashboardSubpageHeader'
 import { toast } from 'sonner'
-import { ArrowLeft, Building2, ChevronRight, X } from 'lucide-react'
+import { Building2, ChevronRight, X } from 'lucide-react'
 
 const STAGES = [
   { key: 'APPLIED', label: 'Applied', bg: 'bg-slate-50 dark:bg-slate-900', border: 'border-slate-200 dark:border-slate-800', dot: 'bg-slate-400' },
@@ -21,7 +21,6 @@ const STAGES = [
 
 export default function InterviewsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const router = useRouter()
   const interviews = trpc.interviews.listByCampaign.useQuery({ campaignId: id })
   const updateStage = trpc.interviews.updateStage.useMutation({
     onSuccess: () => { interviews.refetch(); toast.success('Stage updated') },
@@ -40,14 +39,10 @@ export default function InterviewsPage({ params }: { params: Promise<{ id: strin
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-[1400px] mx-auto px-4 py-8">
-        <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => router.push('/dashboard')}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> Back to Dashboard
-        </Button>
-
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold">Interview Pipeline</h1>
-          <p className="text-muted-foreground text-sm mt-1">Track your application progress per company.</p>
-        </div>
+        <DashboardSubpageHeader
+          title="Interview Pipeline"
+          description="Track your application progress per company."
+        />
 
         {companies.length === 0 ? (
           <Card>
