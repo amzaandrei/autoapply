@@ -1,8 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk'
+import type Anthropic from '@anthropic-ai/sdk'
+import { anthropic as client } from './anthropic'
 import { recordAnthropicUsage } from './anthropic-usage'
 import { webSearchTool, parseJsonFromResponse, parseJsonFromWebSearchResponse } from './ai-helpers'
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export interface CompanyResult {
   name: string
@@ -71,6 +70,12 @@ const TONE_PROMPTS: Record<EmailTone, { wordLimit: string; structure: string }> 
 3. Value proposition: explain what unique perspective or skills you'd bring to the team and how you'd contribute to their goals. 2-3 sentences.
 4. Closing: confident call to action, suggest a specific next step (call, meeting). 1-2 sentences.`,
   },
+}
+
+// Minimal extras passed to wrapAnthropic — just operation name + filterable
+// userId. Keep this lean: prompt/response bodies are captured automatically.
+function langsmithExtra(name: string, userId?: string | null) {
+  return { langsmithExtra: { name, metadata: { userId: userId ?? null } } }
 }
 
 export async function generateEmail(params: {
@@ -147,7 +152,7 @@ Return JSON where the body uses \\n\\n between every paragraph:
 {"subject": "Application at ${params.companyName}", "body": "Dear Hiring Team,\\n\\nParagraph 1 here.\\n\\nParagraph 2 here.\\n\\nParagraph 3 here.\\n\\nBest regards,"}`,
       },
     ],
-  })
+  }, langsmithExtra('generateEmail', params.userId))
   await recordAnthropicUsage(params.userId, response.usage)
 
   const result = parseJsonFromResponse<GeneratedEmailResult>(response, 'AI')
@@ -214,7 +219,7 @@ Return JSON:
 {"subject": "Re: ${params.originalSubject}", "body": "${greeting}\\n\\n...\\n\\nBest regards,"}`,
       },
     ],
-  })
+  }, langsmithExtra('generateFollowUp', params.userId))
   await recordAnthropicUsage(params.userId, response.usage)
 
   return parseJsonFromResponse<GeneratedEmailResult>(response, 'AI')
@@ -284,7 +289,7 @@ Return JSON with this exact schema:
       },
     ],
     tools: webSearchTool(6),
-  })
+  }, langsmithExtra('discoverCompanies', params.userId))
   await recordAnthropicUsage(params.userId, response.usage)
 
   const parsed = parseJsonFromWebSearchResponse<{ companies: CompanyResult[] }>(response)
@@ -328,7 +333,7 @@ Skills as a flat array of individual skill strings.`,
         ],
       },
     ],
-  })
+  }, langsmithExtra('parseCVFromBase64', userId))
   await recordAnthropicUsage(userId, response.usage)
 
   return parseJsonFromResponse<ParsedCV>(response, 'CV parse')
@@ -358,7 +363,7 @@ Skills as a flat array of individual skill strings.`,
 }`,
       },
     ],
-  })
+  }, langsmithExtra('parseCVFromText', userId))
   await recordAnthropicUsage(userId, response.usage)
 
   return parseJsonFromResponse<ParsedCV>(response, 'CV parse')
@@ -380,7 +385,7 @@ export async function discoverSimilarCompanies(params: {
     system: `You are a job market researcher. Find companies similar to the ones provided. Return ONLY valid JSON. No markdown fences.`,
     messages: [{ role: 'user', content: `I've been applying to:\n${companyList}\n\nFind ${params.count ?? 10} MORE similar companies in ${params.region} for: ${params.jobTitle}. Do NOT include companies already listed.\n\nReturn JSON: { "companies": [{ "name":"", "domain":"", "industry":"", "size":"", "description":"", "contactEmail":null, "contactName":null, "linkedIn":null, "matchReason":"" }] }` }],
     tools: webSearchTool(6),
-  })
+  }, langsmithExtra('discoverSimilarCompanies', params.userId))
   await recordAnthropicUsage(params.userId, response.usage)
   return parseJsonFromWebSearchResponse<{ companies: CompanyResult[] }>(response).companies ?? []
 }
@@ -404,7 +409,7 @@ export async function enrichCompany(params: { name: string; domain?: string | nu
     system: `You are a company research analyst. Return ONLY valid JSON. No markdown fences.`,
     messages: [{ role: 'user', content: `Research: ${params.name}${params.domain ? ` (${params.domain})` : ''}${params.industry ? `, ${params.industry}` : ''}\n\nReturn JSON: { "techStack":[], "recentFunding":null, "employeeGrowth":null, "glassdoorRating":null, "keyProducts":[], "hiringSignals":[], "summary":"2-3 sentence executive summary for a job applicant" }` }],
     tools: webSearchTool(4, ['linkedin.com', 'crunchbase.com', 'glassdoor.com', 'builtin.com', 'techcrunch.com', 'github.com']),
-  })
+  }, langsmithExtra('enrichCompany', params.userId))
   await recordAnthropicUsage(params.userId, response.usage)
   return parseJsonFromWebSearchResponse<CompanyEnrichment>(response)
 }

@@ -4,9 +4,7 @@ import { getOAuth2Client } from '@/lib/gmail'
 import { resolveGmailAccessToken } from '@/lib/gmail-token'
 import { withAuthNoReq } from '@/lib/api-auth'
 import { google } from 'googleapis'
-import Anthropic from '@anthropic-ai/sdk'
-
-const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+import { anthropic as ai } from '@/lib/anthropic'
 
 interface CalendarEvent {
   companyName: string
@@ -80,7 +78,7 @@ export const POST = withAuthNoReq(async ({ userId }) => {
             role: 'user',
             content: `Does this email reply contain an interview invitation or meeting request?\n\nFrom: ${email.company.name}\nBody: ${bodyText.slice(0, 1000)}\n\nReturn JSON: { "hasInterview": true/false, "type": "phone_screen|technical|onsite|meeting|null", "date": "YYYY-MM-DD or null", "time": "HH:MM or null", "location": "string or null", "notes": "brief description or null" }`,
           }],
-        })
+        }, { langsmithExtra: { name: 'detectInterviewInReply', metadata: { userId } } })
 
         const aiText = aiResponse.content.find((b) => b.type === 'text')?.text ?? ''
         const jsonStr = aiText.startsWith('{') ? aiText : aiText.match(/\{[\s\S]*\}/)?.[0] ?? '{}'

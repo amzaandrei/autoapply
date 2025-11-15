@@ -51,6 +51,7 @@
     "googleapis": "^144.0.0",
     "ioredis": "^5.10.1",
     "isomorphic-dompurify": "^3.9.0",
+    "langsmith": "^0.6.3",
     "lucide-react": "^1.0.1",
     "mammoth": "^1.8.0",
     "mapbox-gl": "^3.21.0",
