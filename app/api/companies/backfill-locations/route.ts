@@ -7,9 +7,7 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { geocodeForwardBatch } from '@/lib/geocode-cache'
 import { invalidateAppliedCache } from '@/server/routers/regions'
-import Anthropic from '@anthropic-ai/sdk'
-
-const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+import { anthropic as ai } from '@/lib/anthropic'
 
 // Extract the primary HQ location from a batch of companies in one AI call.
 // Returns a map of name → location string (or null).
@@ -32,7 +30,7 @@ Return JSON array with one object per company in the same order:
       max_tokens: 4096,
       system: 'Return only valid JSON. No prose.',
       messages: [{ role: 'user', content: prompt }],
-    })
+    }, { langsmithExtra: { name: 'backfillCompanyLocations' } })
 
     const text = response.content.find((b) => b.type === 'text')
     if (!text || text.type !== 'text') return new Map()
