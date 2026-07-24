@@ -4,6 +4,7 @@
  * In production, we expect REDIS_URL to be set (docker-compose provides it).
  */
 import IORedis, { type Redis } from 'ioredis'
+import { logger } from './logger'
 
 const globalForRedis = globalThis as unknown as { redis: Redis | null }
 
@@ -16,8 +17,7 @@ function createClient(): Redis | null {
     lazyConnect: false,
   })
   client.on('error', (err) => {
-    // eslint-disable-next-line no-console
-    console.error('[redis] error', err.message)
+    logger.error({ err }, '[redis] error')
   })
   return client
 }

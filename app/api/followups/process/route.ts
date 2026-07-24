@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { processFollowUpsForUser } from '@/lib/followup-runner'
+import { logger } from '@/lib/logger'
 
 export async function POST() {
   const session = await auth()
@@ -31,7 +32,7 @@ export async function POST() {
       results: summary.results,
     })
   } catch (err) {
-    console.error('Follow-up process error:', err)
+    logger.error({ err }, 'Follow-up process error')
     const message = err instanceof Error ? err.message : 'Failed to process follow-ups'
     return NextResponse.json({ error: message }, { status: 500 })
   }

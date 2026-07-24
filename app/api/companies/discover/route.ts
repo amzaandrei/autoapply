@@ -12,6 +12,7 @@ import { checkQuota, incrementUsage, getTier } from '@/lib/entitlements'
 import { hasTierAtLeast } from '@/lib/tier-limits'
 import { track } from '@/lib/analytics'
 import { withAuth } from '@/lib/api-auth'
+import { logger } from '@/lib/logger'
 
 export const POST = withAuth(async (request, { userId }) => {
   try {
@@ -257,7 +258,7 @@ export const POST = withAuth(async (request, { userId }) => {
       droppedUnverified,
     })
   } catch (err) {
-    console.error('Discover error:', err)
+    logger.error({ err }, 'Discover error')
     const message = err instanceof Error ? err.message : 'Discovery failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }

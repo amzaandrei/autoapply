@@ -5,6 +5,7 @@ import { invalidateAppliedCache } from '@/server/routers/regions'
 import { getTier, limitsFor, incrementUsage } from '@/lib/entitlements'
 import { track } from '@/lib/analytics'
 import { withAuth } from '@/lib/api-auth'
+import { logger } from '@/lib/logger'
 
 interface SendResult {
   emailId: string
@@ -267,7 +268,7 @@ export const POST = withAuth(async (request, { userId }) => {
       results,
     })
   } catch (err) {
-    console.error('Send error:', err)
+    logger.error({ err }, 'Send error')
     const message = err instanceof Error ? err.message : 'Failed to send emails'
     return NextResponse.json({ error: message }, { status: 500 })
   }

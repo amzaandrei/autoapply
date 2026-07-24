@@ -1,4 +1,5 @@
 import type { CompanyResult } from './ai'
+import { logger } from './logger'
 
 interface JobResult {
   jobTitle: string
@@ -69,7 +70,7 @@ async function searchJSearch(title: string, location: string, count: number = 20
         },
       }
     )
-    if (!res.ok) { console.warn('JSearch API error:', res.status); return [] }
+    if (!res.ok) { logger.warn({ status: res.status }, 'JSearch API error'); return [] }
 
     const data = await res.json() as {
       data?: Array<{
@@ -110,7 +111,7 @@ async function searchJSearch(title: string, location: string, count: number = 20
       postedAt: job.job_posted_at_datetime_utc ?? null,
     }))
   } catch (err) {
-    console.warn('JSearch fetch failed:', err)
+    logger.warn({ err }, 'JSearch fetch failed')
     return []
   }
 }
@@ -122,7 +123,7 @@ async function searchRemotive(title: string, count: number = 20): Promise<JobRes
     const res = await fetch(
       `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(title)}&limit=${count}`
     )
-    if (!res.ok) { console.warn('Remotive API error:', res.status); return [] }
+    if (!res.ok) { logger.warn({ status: res.status }, 'Remotive API error'); return [] }
 
     const data = await res.json() as {
       jobs?: Array<{
@@ -149,7 +150,7 @@ async function searchRemotive(title: string, count: number = 20): Promise<JobRes
       postedAt: job.publication_date ?? null,
     }))
   } catch (err) {
-    console.warn('Remotive fetch failed:', err)
+    logger.warn({ err }, 'Remotive fetch failed')
     return []
   }
 }
@@ -159,7 +160,7 @@ async function searchRemotive(title: string, count: number = 20): Promise<JobRes
 async function searchArbeitnow(title: string, count: number = 20): Promise<JobResult[]> {
   try {
     const res = await fetch('https://www.arbeitnow.com/api/job-board-api')
-    if (!res.ok) { console.warn('Arbeitnow API error:', res.status); return [] }
+    if (!res.ok) { logger.warn({ status: res.status }, 'Arbeitnow API error'); return [] }
 
     const data = await res.json() as {
       data?: Array<{
@@ -195,7 +196,7 @@ async function searchArbeitnow(title: string, count: number = 20): Promise<JobRe
       postedAt: job.created_at ? new Date(job.created_at * 1000).toISOString() : null,
     }))
   } catch (err) {
-    console.warn('Arbeitnow fetch failed:', err)
+    logger.warn({ err }, 'Arbeitnow fetch failed')
     return []
   }
 }
@@ -218,7 +219,7 @@ async function searchTheMuse(title: string, location: string, count: number = 20
     }
 
     const res = await fetch(`https://www.themuse.com/api/public/jobs?${params.toString()}`)
-    if (!res.ok) { console.warn('Muse API error:', res.status); return [] }
+    if (!res.ok) { logger.warn({ status: res.status }, 'Muse API error'); return [] }
 
     const data = await res.json() as {
       results?: Array<{
@@ -247,7 +248,7 @@ async function searchTheMuse(title: string, location: string, count: number = 20
       postedAt: j.publication_date ?? null,
     }))
   } catch (err) {
-    console.warn('Muse fetch failed:', err)
+    logger.warn({ err }, 'Muse fetch failed')
     return []
   }
 }

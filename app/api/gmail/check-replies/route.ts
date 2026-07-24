@@ -6,6 +6,7 @@ import { withAuthNoReq } from '@/lib/api-auth'
 import { sendTelegramNotification, formatReplyNotification } from '@/lib/notifications'
 import { invalidateAppliedCache } from '@/server/routers/regions'
 import { google } from 'googleapis'
+import { logger } from '@/lib/logger'
 
 export const POST = withAuthNoReq(async ({ userId }) => {
   try {
@@ -87,7 +88,7 @@ export const POST = withAuthNoReq(async ({ userId }) => {
               })
             }
           } catch (threadErr) {
-            console.error('Thread check failed for', email.gmailThreadId, threadErr)
+            logger.error({ err: threadErr, threadId: email.gmailThreadId }, 'Thread check failed')
             // Fall through to strategy 2
           }
         }
@@ -110,7 +111,7 @@ export const POST = withAuthNoReq(async ({ userId }) => {
               }
             }
           } catch (searchErr) {
-            console.error('Search check failed for', contactEmail, searchErr)
+            logger.error({ err: searchErr, contactEmail }, 'Search check failed')
           }
         }
 
@@ -155,7 +156,7 @@ export const POST = withAuthNoReq(async ({ userId }) => {
 
     return NextResponse.json({ checked: emails.length, repliesFound, bouncesFound, results })
   } catch (err) {
-    console.error('Check replies error:', err)
+    logger.error({ err }, 'Check replies error')
     const message = err instanceof Error ? err.message : 'Failed to check replies'
     return NextResponse.json({ error: message }, { status: 500 })
   }

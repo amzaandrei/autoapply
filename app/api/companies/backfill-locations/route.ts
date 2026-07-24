@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { geocodeForwardBatch } from '@/lib/geocode-cache'
 import { invalidateAppliedCache } from '@/server/routers/regions'
 import { anthropic as ai } from '@/lib/anthropic'
+import { logger } from '@/lib/logger'
 
 // Extract the primary HQ location from a batch of companies in one AI call.
 // Returns a map of name → location string (or null).
@@ -45,7 +46,7 @@ Return JSON array with one object per company in the same order:
     }
     return map
   } catch (err) {
-    console.error('AI location extraction failed:', err)
+    logger.error({ err }, 'AI location extraction failed')
     return new Map()
   }
 }
@@ -112,7 +113,7 @@ export async function POST() {
       skipped: companies.length - geocodedCount,
     })
   } catch (err) {
-    console.error('Backfill error:', err)
+    logger.error({ err }, 'Backfill error')
     const message = err instanceof Error ? err.message : 'Backfill failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }

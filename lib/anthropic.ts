@@ -7,5 +7,3 @@ import { wrapAnthropic } from 'langsmith/wrappers/anthropic'
 export const anthropic = wrapAnthropic(
   new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }),
 )
-
-export type { Anthropic }

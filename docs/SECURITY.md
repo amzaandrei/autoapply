@@ -34,10 +34,30 @@ docker compose up -d --force-recreate app worker
 
 ## CSP & HTTP headers
 
-- Per-request strict CSP with nonce → emitted by `middleware.ts`
+- Content-Security-Policy → emitted per-request by `proxy.ts` (the Next.js
+  proxy, formerly `middleware.ts`).
 - HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy → emitted by Caddy (see `Caddyfile`)
 
-Never relax CSP to `unsafe-inline` / `unsafe-eval` for scripts. Use the per-request nonce instead.
+**Current `script-src`:** production uses `'self' 'unsafe-inline'` plus an
+explicit host allowlist (Stripe, PostHog, Sentry) — **not** a nonce. This is a
+deliberate tradeoff, not an oversight: `strict-dynamic` + per-request nonce
+requires every `<script>` tag to carry a matching nonce, but Next.js only
+attaches the nonce when a layout is *dynamically* rendered. Any statically
+rendered page (`/`, `/pricing`, …) would emit un-nonced tags and be fully
+blocked. Forcing every layout to `await headers()` would fix the CSP but kill
+static caching of the marketing pages — a bad trade. `proxy.ts` documents this
+in full.
+
+Cross-origin script **injection is still blocked** by `'self'` + the fixed host
+allowlist, and `frame-ancestors 'none'` prevents clickjacking. `'unsafe-eval'`
+is allowed only in dev (HMR) and never in production.
+
+**Known follow-up:** the nonce is already generated and threaded through the
+request headers, so tightening `script-src` back to `'strict-dynamic'` + nonce
+is a documented next step — do this once a real domain is in place and the
+static marketing pages are moved behind a dynamic boundary. Until then, do not
+add `'unsafe-eval'` to the production policy or broaden the script host
+allowlist without review.
 
 ## XSS protection
 
