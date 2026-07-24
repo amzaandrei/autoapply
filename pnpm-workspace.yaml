@@ -1,0 +1,15 @@
+# pnpm 11 gates dependency install scripts and aborts the install unless each
+# is explicitly approved here (the `pnpm` field in package.json and the older
+# `onlyBuiltDependencies` setting are no longer honored). These packages have
+# install scripts that must run: Prisma's query engine, sharp's native binary,
+# the Sentry CLI used for source-map upload at build time, and esbuild's
+# native binary (pulled in by vitest for the test suite).
+allowBuilds:
+  '@prisma/engines': true
+  '@sentry/cli': true
+  core-js: true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
+  protobufjs: true
+  sharp: true
