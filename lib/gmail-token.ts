@@ -10,7 +10,7 @@ export class GmailNotConnectedError extends Error {
   }
 }
 
-export class ThreadNotFoundError extends Error {
+class ThreadNotFoundError extends Error {
   constructor() {
     super('Thread not found')
     this.name = 'ThreadNotFoundError'
@@ -22,7 +22,7 @@ export class ThreadNotFoundError extends Error {
  * access token in one shot. Routes that operate on an existing thread reuse
  * this so the (lookup → 404) + (token → 400) pattern doesn't get copy-pasted.
  */
-export async function getOwnedThreadAndToken(
+async function getOwnedThreadAndToken(
   threadId: string,
   userId: string,
 ): Promise<{ email: GeneratedEmail; accessToken: string }> {
