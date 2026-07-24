@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { exchangeCode } from '@/lib/gmail'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
     const redirectPath = campaignId ? `/send?campaignId=${campaignId}&gmailConnected=1` : '/send?gmailConnected=1'
     return NextResponse.redirect(`${baseUrl}${redirectPath}`)
   } catch (err) {
-    console.error('Gmail callback error:', err)
+    logger.error({ err }, 'Gmail callback error')
     const message = err instanceof Error ? err.message : 'OAuth failed'
     return NextResponse.redirect(`${baseUrl}/send?gmailError=${encodeURIComponent(message)}`)
   }

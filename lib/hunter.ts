@@ -3,6 +3,7 @@
 // Docs: https://hunter.io/api-documentation/v2
 
 import { incrementUsage } from './entitlements'
+import { logger } from './logger'
 
 const HUNTER_API_KEY = process.env.HUNTER_API_KEY ?? ''
 const BASE = 'https://api.hunter.io/v2'
@@ -20,7 +21,7 @@ async function recordHunterRequest(userId: string | null | undefined): Promise<v
   try {
     await incrementUsage(userId, 'hunter_request', 1)
   } catch (err) {
-    console.warn('Failed to record hunter_request usage:', err)
+    logger.warn({ err }, 'Failed to record hunter_request usage')
   }
 }
 
@@ -31,7 +32,7 @@ async function recordHunterEnrichment(userId: string | null | undefined): Promis
   try {
     await incrementUsage(userId, 'hunter_enrichment', 1)
   } catch (err) {
-    console.warn('Failed to record hunter_enrichment usage:', err)
+    logger.warn({ err }, 'Failed to record hunter_enrichment usage')
   }
 }
 
@@ -83,7 +84,7 @@ async function hunterDomainSearch(input: {
     await recordHunterRequest(input.userId)
     if (!res.ok) {
       if (res.status === 400 || res.status === 404) return null
-      console.warn('Hunter.io error:', res.status)
+      logger.warn({ status: res.status }, 'Hunter.io error')
       return null
     }
     const data = await res.json() as { data?: { domain?: string; organization?: string; emails?: HunterEmail[] } }
@@ -95,7 +96,7 @@ async function hunterDomainSearch(input: {
       emails: data.data.emails ?? [],
     }
   } catch (err) {
-    console.warn('Hunter fetch failed:', err)
+    logger.warn({ err }, 'Hunter fetch failed')
     return null
   }
 }
@@ -212,7 +213,7 @@ export async function hunterEmailFinder(input: {
     await recordHunterRequest(input.userId)
     if (!res.ok) {
       if (res.status === 400 || res.status === 404) return null
-      console.warn('Hunter email-finder error:', res.status)
+      logger.warn({ status: res.status }, 'Hunter email-finder error')
       return null
     }
 
@@ -249,7 +250,7 @@ export async function hunterEmailFinder(input: {
       verification: d.verification ? { status: vStatus, date: d.verification.date ?? null } : null,
     }
   } catch (err) {
-    console.warn('Hunter email-finder fetch failed:', err)
+    logger.warn({ err }, 'Hunter email-finder fetch failed')
     return null
   }
 }
@@ -294,7 +295,7 @@ export async function hunterEnrichCompany(input: {
     await recordHunterEnrichment(input.userId)
     if (!res.ok) {
       if (res.status === 400 || res.status === 404) return null
-      console.warn('Hunter enrichment error:', res.status)
+      logger.warn({ status: res.status }, 'Hunter enrichment error')
       return null
     }
 
@@ -335,7 +336,7 @@ export async function hunterEnrichCompany(input: {
       techStack: Array.isArray(d.tech) ? d.tech : [],
     }
   } catch (err) {
-    console.warn('Hunter enrichment fetch failed:', err)
+    logger.warn({ err }, 'Hunter enrichment fetch failed')
     return null
   }
 }
@@ -350,7 +351,7 @@ export async function hunterVerifyEmail(email: string, userId?: string | null): 
     )
     await recordHunterRequest(userId)
     if (!res.ok) {
-      console.warn('Hunter verify error:', res.status)
+      logger.warn({ status: res.status }, 'Hunter verify error')
       return {
         email,
         status: 'error',
@@ -409,7 +410,7 @@ export async function hunterVerifyEmail(email: string, userId?: string | null): 
       block: !!d.block,
     }
   } catch (err) {
-    console.warn('Hunter verify fetch failed:', err)
+    logger.warn({ err }, 'Hunter verify fetch failed')
     return {
       email,
       status: 'error',

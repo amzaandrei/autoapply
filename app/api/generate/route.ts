@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto'
 import { checkQuota, incrementUsage } from '@/lib/entitlements'
 import { track } from '@/lib/analytics'
 import { withAuth } from '@/lib/api-auth'
+import { logger } from '@/lib/logger'
 
 function withSignature(body: string, signatureBlock: string): string {
   return signatureBlock ? `${body}\n${signatureBlock}` : body
@@ -244,7 +245,7 @@ export const POST = withAuth(async (request, { userId }) => {
       results,
     })
   } catch (err) {
-    console.error('Generate error:', err)
+    logger.error({ err }, 'Generate error')
     const message = err instanceof Error ? err.message : 'Failed to generate emails'
     return NextResponse.json({ error: message }, { status: 500 })
   }

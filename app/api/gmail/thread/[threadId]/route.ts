@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getThreadMessages, parseThreadMessages } from '@/lib/gmail'
 import { resolveOwnedThread } from '@/lib/gmail-token'
 import { withAuthParams } from '@/lib/api-auth'
+import { logger } from '@/lib/logger'
 
 export const GET = withAuthParams<{ threadId: string }, NextResponse>(async (_req, { userId, params }) => {
   const { threadId } = params
@@ -17,7 +18,7 @@ export const GET = withAuthParams<{ threadId: string }, NextResponse>(async (_re
     const messages = parseThreadMessages(rawMessages, user?.email ?? '')
     return NextResponse.json({ messages })
   } catch (err) {
-    console.error('Thread fetch error:', err)
+    logger.error({ err }, 'Thread fetch error')
     return NextResponse.json({ error: 'Failed to fetch thread' }, { status: 500 })
   }
 })

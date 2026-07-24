@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { sendGmailEmail } from '@/lib/gmail'
 import { resolveOwnedThread } from '@/lib/gmail-token'
 import { withAuth } from '@/lib/api-auth'
+import { logger } from '@/lib/logger'
 
 export const POST = withAuth(async (request, { userId }) => {
   const body = await request.json() as {
@@ -41,7 +42,7 @@ export const POST = withAuth(async (request, { userId }) => {
     })
     return NextResponse.json({ messageId: result.messageId, threadId: result.threadId })
   } catch (err) {
-    console.error('Reply error:', err)
+    logger.error({ err }, 'Reply error')
     const message = err instanceof Error ? err.message : 'Failed to send reply'
     return NextResponse.json({ error: message }, { status: 500 })
   }

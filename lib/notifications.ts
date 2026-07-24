@@ -1,3 +1,5 @@
+import { logger } from './logger'
+
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? ''
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? ''
 
@@ -19,7 +21,7 @@ export async function sendTelegramNotification(message: string): Promise<boolean
     )
     return res.ok
   } catch {
-    console.warn('Telegram notification failed')
+    logger.warn('Telegram notification failed')
     return false
   }
 }

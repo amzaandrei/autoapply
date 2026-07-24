@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { parseCVFromBase64, parseCVFromText } from '@/lib/ai'
 import { withAuth } from '@/lib/api-auth'
+import { logger } from '@/lib/logger'
 
 export const POST = withAuth(async (request, { userId }) => {
   try {
@@ -98,7 +99,7 @@ export const POST = withAuth(async (request, { userId }) => {
       return NextResponse.json({ error: 'No file or text provided' }, { status: 400 })
     }
   } catch (err) {
-    console.error('CV parse error:', err)
+    logger.error({ err }, 'CV parse error')
     const message = err instanceof Error ? err.message : 'Failed to parse CV'
     return NextResponse.json({ error: message }, { status: 500 })
   }
