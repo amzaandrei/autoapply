@@ -15,7 +15,7 @@ services:
     env_file:
       - .env.production
     environment:
-      DATABASE_URL: postgresql://autoapply:${DB_PASSWORD}@db:5432/autoapply
+      DATABASE_URL: postgresql://autoapply:${DB_PASSWORD}@autoapply-db:5432/autoapply
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     depends_on:
       db:
@@ -30,6 +30,17 @@ services:
       timeout: 5s
       retries: 3
       start_period: 40s
+    # Resource caps so a runaway container can't starve co-tenant stacks on the
+    # shared host. `docker compose up` (Compose v2) honors deploy.resources
+    # limits/reservations on a single host — no Swarm required.
+    deploy:
+      resources:
+        limits:
+          memory: "1g"
+          cpus: "1.0"
+        reservations:
+          memory: "256m"
+          cpus: "0.25"
 
   worker:
     image: autoapply-app:latest
@@ -37,7 +48,7 @@ services:
     env_file:
       - .env.production
     environment:
-      DATABASE_URL: postgresql://autoapply:${DB_PASSWORD}@db:5432/autoapply
+      DATABASE_URL: postgresql://autoapply:${DB_PASSWORD}@autoapply-db:5432/autoapply
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       WORKER_CRON_ENABLED: "true"
     depends_on:
@@ -48,6 +59,15 @@ services:
       app:
         condition: service_started
     entrypoint: ["/app/docker/worker-entrypoint.sh"]
+    # Resource caps (Compose v2 applies deploy.resources on a single host).
+    deploy:
+      resources:
+        limits:
+          memory: "512m"
+          cpus: "0.75"
+        reservations:
+          memory: "128m"
+          cpus: "0.2"
 
   db:
     image: postgres:17-alpine
@@ -58,11 +78,28 @@ services:
       POSTGRES_DB: autoapply
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # Unique alias on the shared `web` network: the bare `db` service-name alias
+    # collides with other co-tenant stacks' postgres (slideprep-db also answers
+    # to `db`), so the app/worker connect via `autoapply-db` to avoid resolving
+    # to the wrong database and failing auth.
+    networks:
+      default:
+        aliases:
+          - autoapply-db
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U autoapply"]
       interval: 10s
       timeout: 5s
       retries: 5
+    # Resource caps (Compose v2 applies deploy.resources on a single host).
+    deploy:
+      resources:
+        limits:
+          memory: "1g"
+          cpus: "1.0"
+        reservations:
+          memory: "256m"
+          cpus: "0.25"
 
   redis:
     image: redis:7-alpine
@@ -80,6 +117,16 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    # Resource caps (Compose v2 applies deploy.resources on a single host).
+    # Memory limit sits above the 256mb --maxmemory so Redis keeps its dataset
+    # plus overhead before the container cap bites.
+    deploy:
+      resources:
+        limits:
+          memory: "384m"
+          cpus: "0.5"
+        reservations:
+          memory: "128m"
 
   caddy:
     image: caddy:2-alpine
@@ -100,6 +147,14 @@ services:
       DOMAIN_PORTFOLIO: ${DOMAIN_PORTFOLIO:-}
       # Optional third site (slideprep co-tenant). Leave empty to disable.
       DOMAIN_SLIDEPREP: ${DOMAIN_SLIDEPREP:-}
+    # Resource caps (Compose v2 applies deploy.resources on a single host).
+    deploy:
+      resources:
+        limits:
+          memory: "128m"
+          cpus: "0.5"
+        reservations:
+          memory: "32m"
 
 volumes:
   pgdata:
