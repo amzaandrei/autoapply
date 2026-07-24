@@ -81,7 +81,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcryptjs": "^3.0.0",
     "@types/mapbox-gl": "^3.5.0",
     "@types/node": "^20",
     "@types/node-cron": "^3.0.11",
