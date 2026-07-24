@@ -23,7 +23,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Reads pnpm from package.json's "packageManager" field so this verify
       # job resolves the lockfile with the same pnpm that generated it.
@@ -58,7 +58,7 @@ jobs:
       image_tag: ${{ steps.tag.outputs.tag }}
       image: ${{ steps.meta.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Compute tag
         id: tag
