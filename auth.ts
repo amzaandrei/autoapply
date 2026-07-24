@@ -6,6 +6,8 @@ import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma, withDbRetry } from '@/lib/prisma'
 import { isAdminEmail } from '@/lib/admin-emails'
+import { rateLimit } from '@/lib/rate-limit'
+import { getClientIp } from '@/lib/client-ip'
 import { authConfig } from './auth.config'
 
 export const { handlers, auth } = NextAuth({
@@ -21,9 +23,25 @@ export const { handlers, auth } = NextAuth({
       clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
     }),
     Credentials({
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const { email, password } = credentials as { email: string; password: string }
         if (!email || !password) return null
+
+        // Brute-force protection: throttle credential logins to ~10 attempts per
+        // 15 min, keyed by client IP + email. NextAuth v5 passes the raw Request
+        // as authorize()'s second argument, so we read the forwarded client IP
+        // (Caddy sets x-forwarded-for). When the IP can't be determined the key
+        // degrades to email-only, still bounding per-account guessing. Fail OPEN
+        // on limiter errors so a backend hiccup can never lock users out. Once the
+        // cap is hit we return null (generic "invalid credentials"), matching the
+        // existing failure path without leaking that a rate limit was triggered.
+        try {
+          const ip = getClientIp(request?.headers)
+          const attempt = rateLimit(`login:${ip}:${email.toLowerCase()}`, 10, 15 * 60 * 1000)
+          if (!attempt.allowed) return null
+        } catch {
+          // Limiter backend unavailable — fall through to the credential check.
+        }
 
         const user = await withDbRetry(() => prisma.user.findUnique({ where: { email } }))
         if (!user?.password) return null
