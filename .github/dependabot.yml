@@ -1,0 +1,40 @@
+# Dependabot configuration — weekly dependency updates.
+# Minor + patch bumps are grouped per ecosystem to reduce PR noise; major
+# bumps still open individual PRs so breaking changes get reviewed on their own.
+version: 2
+updates:
+  # Application dependencies (pnpm — detected via the npm ecosystem).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions used by the workflows in .github/workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Base images referenced by the root Dockerfile.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      docker-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

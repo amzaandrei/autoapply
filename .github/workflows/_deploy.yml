@@ -17,9 +17,39 @@ on:
         required: false
 
 jobs:
+  verify:
+    name: Typecheck & test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads pnpm from package.json's "packageManager" field so this verify
+      # job resolves the lockfile with the same pnpm that generated it.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm exec prisma generate
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
   build-push:
     name: Build & push image
     runs-on: ubuntu-latest
+    needs: verify
     environment: ${{ inputs.environment }}
     permissions:
       contents: read
@@ -77,15 +107,21 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     needs: build-push
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          envs: IMAGE,IMAGE_TAG
+          envs: IMAGE,IMAGE_TAG,GHCR_TOKEN,GHCR_USER
           script: |
             set -euo pipefail
             cd /opt/autoapply
@@ -94,10 +130,10 @@ jobs:
             git fetch --all --quiet
             git reset --hard origin/main
 
-            # Log in to GHCR (token set once by bootstrap)
-            if ! docker info 2>/dev/null | grep -q 'Username: '; then
-              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null 2>&1 || true
-            fi
+            # Authenticate to GHCR with the workflow's short-lived token so the
+            # pull works without a long-lived PAT stored on the host. (Classic
+            # PATs work too, but GHCR doesn't reliably honor fine-grained ones.)
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
             IMAGE="${{ needs.build-push.outputs.image }}" \
             IMAGE_TAG="${{ needs.build-push.outputs.image_tag }}" \
