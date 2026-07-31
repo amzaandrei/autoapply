@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 # -------- Stage 1: deps --------
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 
 # -------- Stage 2: builder --------
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -36,7 +36,7 @@ RUN pnpm exec tsc --skipLibCheck --module commonjs --target es2020 --moduleResol
     --esModuleInterop true --outDir dist scripts/worker.ts || true
 
 # -------- Stage 3: runner --------
-FROM node:22-alpine AS runner
+FROM node:25-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production PORT=3002 HOSTNAME=0.0.0.0
 RUN apk add --no-cache wget && \
